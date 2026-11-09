@@ -1,0 +1,4 @@
+# near-sdk reaches the chain's host functions for panics and hashing only when built with this flag.
+# Without it a failed rule still reverts, but its error word (for example ONLY_BACKER) is lost.
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg", "near"]

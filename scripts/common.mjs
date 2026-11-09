@@ -10,7 +10,8 @@ export const PLAN_FILE = at('deployment', 'testnet.json');
 export const WASM_FILE = at('deployment', 'swarmguild.wasm');
 export const EVIDENCE_DIR = at('evidence', 'testnet');
 export const RAW_BASE = 'https://raw.githubusercontent.com/0xNexuz/SwarmGuild/main';
-export const RPC_URL = process.env.NEAR_RPC_URL ?? 'https://rpc.testnet.near.org';
+// Tried in order; a node that is busy or rate-limiting is skipped for the next one.
+export const RPC_URLS = [...(process.env.NEAR_RPC_URL ? [process.env.NEAR_RPC_URL] : []), 'https://rpc.testnet.fastnear.com', 'https://rpc.testnet.near.org'];
 export const ARCHIVAL_URLS = ['https://archival-rpc.testnet.fastnear.com', 'https://archival-rpc.testnet.near.org'];
 
 export function parseArgs(argv = process.argv.slice(2)) {
@@ -30,14 +31,15 @@ export const writeJson = (file, value) => { fs.mkdirSync(path.dirname(file), { r
 export function keysDir(flags, { required = true } = {}) {
   const dir = flags['keys-dir'] ?? process.env.SWARMGUILD_KEYS_DIR;
   if (!dir && required) throw new Error('Name the keys folder with --keys-dir or SWARMGUILD_KEYS_DIR. It must be outside this repository.');
-  if (dir && !path.relative(root, path.resolve(dir)).startsWith('..')) throw new Error('The keys folder must be outside this repository.');
+  const inside = dir && (rel => !rel.startsWith('..') && !path.isAbsolute(rel))(path.relative(root, path.resolve(dir)));
+  if (inside) throw new Error('The keys folder must be outside this repository.');
   return dir ? path.resolve(dir) : null;
 }
 /** A Testnet connection. Every transaction is written to evidence/testnet/intents.jsonl before it is sent. */
 export function testnet(flags, { signing = true } = {}) {
   if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0') throw new Error('TLS certificate checks must stay on.');
   const intents = path.join(EVIDENCE_DIR, 'intents.jsonl');
-  return rpcChain({ networkId: 'testnet', nodeUrl: RPC_URL, txUrls: ARCHIVAL_URLS, keysDir: signing ? keysDir(flags) : null,
+  return rpcChain({ networkId: 'testnet', nodeUrl: RPC_URLS[0], fallbackUrls: RPC_URLS.slice(1), txUrls: ARCHIVAL_URLS, keysDir: signing ? keysDir(flags) : null,
     onSigned(intent) { fs.mkdirSync(EVIDENCE_DIR, { recursive: true }); fs.appendFileSync(intents, JSON.stringify({ at: new Date().toISOString(), ...intent }) + '\n'); } });
 }
 export function nearAiKey() {

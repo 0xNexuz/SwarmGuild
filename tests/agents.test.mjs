@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { decideBid, doWork, guardrails, reviewWork } from '../lib/agents.mjs';
 import { fetchManifest, loadManifests, manifestHash, manifestProblems } from '../lib/manifest.mjs';
@@ -7,7 +8,7 @@ import { costYocto, forgetAttestations, sha256, verifyProof } from '../lib/near-
 import { commitment, nearToYocto, yoctoToNear } from '../lib/market.mjs';
 import { fakeCloud } from './fake-cloud.mjs';
 
-const dir = name => new URL(`../agents/${name}/`, import.meta.url).pathname;
+const dir = name => fileURLToPath(new URL(`../agents/${name}/`, import.meta.url));
 const workerFiles = loadManifests(dir('workers'));
 const worker = slug => workerFiles.find(w => w.slug === slug).manifest;
 const reviewers = ['quality', 'safety', 'integrity'].map(slug => loadManifests(dir('reviewers')).find(r => r.slug === slug).manifest);

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 import { createRunner, memoryStore } from '../lib/runner.mjs';
 import { loadManifests, manifestHash } from '../lib/manifest.mjs';
 import { forgetAttestations, sha256, readTranscript, verifyProof } from '../lib/near-ai.mjs';
@@ -7,7 +8,7 @@ import { nearToYocto } from '../lib/market.mjs';
 import { fakeCloud } from './fake-cloud.mjs';
 import { fakeChain } from './fake-chain.mjs';
 
-const dir = name => new URL(`../agents/${name}/`, import.meta.url).pathname;
+const dir = name => fileURLToPath(new URL(`../agents/${name}/`, import.meta.url));
 const workers = loadManifests(dir('workers')); const reviewerFiles = loadManifests(dir('reviewers'));
 const owner = 'owner.test', operator = 'operator.test', guild = 'guild.test';
 const reviewerIds = reviewerFiles.map(r => `rev-${r.slug}.${owner}`);
