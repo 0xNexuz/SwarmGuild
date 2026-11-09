@@ -10,6 +10,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
@@ -17,7 +18,9 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
-      - name: Node tests
+      - name: Scan every commit for credential material
+        run: node scripts/scan-secrets.mjs
+      - name: Node tests (agents, guardrails, runner, simulation)
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           npm test
@@ -32,6 +35,18 @@ jobs:
           cargo build --manifest-path contracts/swarm/Cargo.toml --locked --target wasm32-unknown-unknown --release
           sha256sum contracts/swarm/target/wasm32-unknown-unknown/release/swarmguild.wasm
           ls -l contracts/swarm/target/wasm32-unknown-unknown/release/swarmguild.wasm
+      - name: The committed WASM is this build
+        run: |
+          if [ -f deployment/swarmguild.wasm ]; then
+            cmp deployment/swarmguild.wasm contracts/swarm/target/wasm32-unknown-unknown/release/swarmguild.wasm
+          else
+            echo 'deployment/swarmguild.wasm is not committed yet'
+          fi
+      - name: Run the real WASM on NEAR Sandbox with the Testnet scripts
+        run: |
+          bash scripts/setup-near-sandbox.sh
+          npm ci --prefix sandbox --ignore-scripts --no-audit --no-fund
+          bash scripts/run-sandbox-tests.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: swarmguild-wasm

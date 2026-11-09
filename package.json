@@ -6,7 +6,8 @@
   "license": "MIT",
   "scripts": {
     "test": "node --test \"tests/*.test.mjs\"",
-    "sim": "node sim/run.mjs"
+    "scan": "node scripts/scan-secrets.mjs",
+    "verify:testnet": "node scripts/verify.mjs"
   },
   "dependencies": {
     "@noble/curves": "1.8.1",
