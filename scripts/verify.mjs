@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { failureText } from '../lib/chain.mjs';
+import { manifestHash } from '../lib/manifest.mjs';
 import { checkDeployment } from '../lib/setup.mjs';
 import { verifyJob } from '../lib/verify.mjs';
 import { EVIDENCE_DIR, main, parseArgs, readPlan, testnet } from './common.mjs';
@@ -15,6 +16,12 @@ main(async () => {
     const outcome = await chain.tx(t.txHash, plan.owner);
     const failure = outcome && (outcome.status?.Failure ?? outcome.receipts_outcome?.map(r => r.outcome?.status?.Failure).find(Boolean));
     results.push({ job: 'deployment', check: `${t.step}: final and successful`, ok: Boolean(outcome) && !failure, detail: `${t.txHash}${failure ? ` ${failureText(failure)}` : ''}` });
+  }
+  for (const a of plan.agents) { // the manifest anyone can fetch is the one whose hash is on chain
+    let detail = ''; let ok = false;
+    try { const response = await fetch(a.specUrl, { signal: AbortSignal.timeout(15000) }); ok = response.ok && manifestHash(Buffer.from(await response.arrayBuffer())) === a.specHash; detail = `HTTP ${response.status}`; }
+    catch (error) { detail = error.message; }
+    results.push({ job: 'deployment', check: `${a.id}: the manifest at its public URL has the hash on chain`, ok, detail });
   }
   const jobsDir = path.join(EVIDENCE_DIR, 'jobs');
   const files = fs.existsSync(jobsDir) ? fs.readdirSync(jobsDir).filter(f => f.endsWith('.json')).sort((a, b) => parseInt(a) - parseInt(b)) : [];

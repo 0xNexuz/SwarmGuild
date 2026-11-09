@@ -17,6 +17,10 @@ main(async () => {
     if (!fs.existsSync(`${dir}/${owner}.json`)) throw new Error(`The owner's key file ${owner}.json is not in the keys folder.`);
     const existing = fs.existsSync(PLAN_FILE) ? JSON.parse(fs.readFileSync(PLAN_FILE, 'utf8')) : null;
     if (existing && existing.owner !== owner) throw new Error(`deployment/testnet.json already plans a deployment for ${existing.owner}.`);
+    // The hash on chain names the manifest's bytes, and the public copy on GitHub has LF line endings.
+    for (const kind of ['workers', 'reviewers']) for (const file of fs.readdirSync(at('agents', kind))) {
+      if (fs.readFileSync(at('agents', kind, file)).includes(13)) throw new Error(`agents/${kind}/${file} has Windows line endings. Check the repository out again with LF endings (git config core.autocrlf false).`);
+    }
     const plan = buildPlan({ networkId: 'testnet', owner, wasm: fs.readFileSync(WASM_FILE), agentsDir: at('agents'), rawBase: RAW_BASE, publicKeyOf: id => ensureKey(dir, id) });
     writeJson(PLAN_FILE, { ...plan, transactions: existing?.transactions ?? [] });
     console.log(JSON.stringify({ wrote: 'deployment/testnet.json', owner, guild: plan.guild, wasmSha256: plan.wasm.sha256,
