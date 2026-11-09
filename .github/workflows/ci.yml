@@ -1,0 +1,38 @@
+name: SwarmGuild checks
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+      - name: Node tests
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --target wasm32-unknown-unknown
+          rustup default 1.96.0
+      - name: Contract tests
+        run: cargo test --manifest-path contracts/swarm/Cargo.toml --locked
+      - name: Build the contract WASM
+        run: |
+          cargo build --manifest-path contracts/swarm/Cargo.toml --locked --target wasm32-unknown-unknown --release
+          sha256sum contracts/swarm/target/wasm32-unknown-unknown/release/swarmguild.wasm
+          ls -l contracts/swarm/target/wasm32-unknown-unknown/release/swarmguild.wasm
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: swarmguild-wasm
+          path: contracts/swarm/target/wasm32-unknown-unknown/release/swarmguild.wasm
