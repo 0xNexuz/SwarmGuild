@@ -1,0 +1,40 @@
+name: Publish the contract WASM
+
+# Manual only. Builds the contract exactly as CI does and commits it to deployment/swarmguild.wasm,
+# but only if its SHA-256 is the one given. This is the only workflow that can write to the repository,
+# and that file is the only thing it writes.
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha256:
+        description: SHA-256 the build must have (from a CI run whose Sandbox tests passed)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Build
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --target wasm32-unknown-unknown
+          rustup default 1.96.0
+          cargo build --manifest-path contracts/swarm/Cargo.toml --locked --target wasm32-unknown-unknown --release
+      - name: Commit it only if it is the expected build
+        env:
+          EXPECTED: ${{ inputs.expected_sha256 }}
+        run: |
+          built=contracts/swarm/target/wasm32-unknown-unknown/release/swarmguild.wasm
+          printf '%s  %s\n' "$EXPECTED" "$built" | sha256sum --check --status
+          mkdir -p deployment
+          cp "$built" deployment/swarmguild.wasm
+          git config user.name 0xNexuz
+          git config user.email elikrypttt@gmail.com
+          git add deployment/swarmguild.wasm
+          git diff --cached --quiet && { echo 'Already committed.'; exit 0; }
+          git commit -m "Contract WASM built by CI (sha256 ${EXPECTED:0:16})"
+          git push
