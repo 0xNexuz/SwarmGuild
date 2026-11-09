@@ -35,6 +35,8 @@ pub struct Agent {
     /// SHA-256 of the agent's manifest: its prompt, knowledge base and tools.
     pub spec_hash: String,
     pub spec_url: String,
+    /// Hosted agents have no key of their own: the operator bids and submits for them from their manifest.
+    pub hosted: bool,
     pub balance: U128,
     pub locked: U128,
     pub earned: U128,
@@ -135,16 +137,19 @@ impl Swarm {
     // ----- agents -----
 
     /// Anyone adds an agent to the swarm by funding it. The deposit is the agent's inference budget.
+    /// A hosted agent needs no account or key: its name must sit under the backer's own account.
     #[payable]
-    pub fn add_agent(&mut self, agent: AccountId, name: String, model: String, spec_hash: String, spec_url: String) {
+    pub fn add_agent(&mut self, agent: AccountId, name: String, model: String, spec_hash: String, spec_url: String, hosted: bool) {
         let deposit = env::attached_deposit().as_yoctonear();
+        let backer = env::predecessor_account_id();
+        require!(!hosted || agent == backer || agent.as_str().ends_with(&format!(".{backer}")), "HOSTED_NAME_NOT_YOURS");
         require!(deposit >= MIN_AGENT_FUNDING, "MIN_AGENT_FUNDING");
         require!(self.agents.get(&agent).is_none(), "AGENT_EXISTS");
         require!(name.len() <= 64 && model.len() <= 64 && spec_url.len() <= MAX_TEXT, "TEXT_TOO_LONG");
         require!(spec_hash.len() == 64 && spec_hash.bytes().all(|b| b.is_ascii_hexdigit()), "BAD_SPEC_HASH");
-        self.agents.insert(agent.clone(), Agent { backer: env::predecessor_account_id(), name, model, spec_hash, spec_url,
+        self.agents.insert(agent.clone(), Agent { backer, name, model, spec_hash, spec_url, hosted,
             balance: U128(deposit), locked: U128(0), earned: U128(0), inference_spent: U128(0), jobs_won: 0, jobs_paid: 0, jobs_failed: 0 });
-        env::log_str(&format!("SWARM agent_added agent={agent} deposit={deposit}"));
+        env::log_str(&format!("SWARM agent_added agent={agent} deposit={deposit} hosted={hosted}"));
     }
 
     #[payable]
@@ -201,8 +206,8 @@ impl Swarm {
     }
 
     /// An agent commits to a hidden price. The bond comes out of the agent's own balance.
-    pub fn commit_bid(&mut self, job_id: u64, commitment: String) {
-        let agent_id = env::predecessor_account_id();
+    pub fn commit_bid(&mut self, job_id: u64, commitment: String, agent: Option<AccountId>) {
+        let agent_id = self.acting_for(agent);
         require!(!self.reviewers.contains(&agent_id), "REVIEWERS_CANNOT_BID");
         require!(commitment.len() == 64 && commitment.bytes().all(|b| b.is_ascii_hexdigit()), "BAD_COMMITMENT");
         let now = env::block_timestamp();
@@ -219,8 +224,8 @@ impl Swarm {
         env::log_str(&format!("SWARM bid_committed job={job_id} agent={agent_id}"));
     }
 
-    pub fn reveal_bid(&mut self, job_id: u64, price: U128, salt: String) {
-        let agent_id = env::predecessor_account_id();
+    pub fn reveal_bid(&mut self, job_id: u64, price: U128, salt: String, agent: Option<AccountId>) {
+        let agent_id = self.acting_for(agent);
         let now = env::block_timestamp();
         let job = self.jobs.get(&job_id).unwrap_or_else(|| env::panic_str("NO_JOB"));
         require!(job.status == JobStatus::Open && now >= job.commit_end_ns.0 && now < job.reveal_end_ns.0, "NOT_REVEAL_PHASE");
@@ -275,12 +280,13 @@ impl Swarm {
 
     /// The winner hands in its work with the TEE signature of the model call that produced it.
     #[allow(clippy::too_many_arguments)]
-    pub fn submit_work(&mut self, job_id: u64, result_hash: String, result_url: String, model: String, signed_text: String, signature: String, signing_address: String) {
+    pub fn submit_work(&mut self, job_id: u64, result_hash: String, result_url: String, model: String, signed_text: String, signature: String, signing_address: String, agent: Option<AccountId>) {
+        let agent_id = self.acting_for(agent);
         let now = env::block_timestamp();
         let window = self.review_window_ns;
         let job = self.jobs.get_mut(&job_id).unwrap_or_else(|| env::panic_str("NO_JOB"));
         require!(job.status == JobStatus::Awarded, "NOT_AWARDED");
-        require!(job.winner.as_ref() == Some(&env::predecessor_account_id()), "ONLY_WINNER");
+        require!(job.winner.as_ref() == Some(&agent_id), "ONLY_WINNER");
         require!(now < job.work_due_ns.unwrap().0, "WORK_LATE");
         require!(result_hash.len() == 64 && result_hash.bytes().all(|b| b.is_ascii_hexdigit()), "BAD_RESULT_HASH");
         require!([&result_url, &model, &signed_text, &signature, &signing_address].iter().all(|s| s.len() <= MAX_TEXT), "TEXT_TOO_LONG");
@@ -379,6 +385,8 @@ impl Swarm {
         require!(env::predecessor_account_id() == self.owner, "ONLY_OWNER");
         require!(!reviewers.is_empty() && reviewers.len() <= 7, "1 to 7 reviewers");
         require!(review_threshold >= 1 && review_threshold as usize <= reviewers.len(), "BAD_THRESHOLD");
+        let mut unique = reviewers.clone(); unique.sort(); unique.dedup();
+        require!(unique.len() == reviewers.len(), "DUPLICATE_REVIEWER");
         self.reviewers = reviewers;
         self.review_threshold = review_threshold;
     }
@@ -404,6 +412,19 @@ impl Swarm {
     pub fn get_credit(&self, account: AccountId) -> U128 { U128(self.credits.get(&account).copied().unwrap_or(0)) }
 
     // ----- internals -----
+
+    /// Who a bid or submission is for. An agent acts for itself; the operator may act for a hosted agent.
+    fn acting_for(&self, agent: Option<AccountId>) -> AccountId {
+        let caller = env::predecessor_account_id();
+        match agent {
+            Some(a) if a != caller => {
+                require!(caller == self.operator, "ONLY_OPERATOR_FOR_HOSTED");
+                require!(self.agents.get(&a).is_some_and(|x| x.hosted), "NOT_HOSTED");
+                a
+            }
+            _ => caller,
+        }
+    }
 
     fn credit(&mut self, who: &AccountId, amount: u128) {
         let now = self.credits.get(who).copied().unwrap_or(0);

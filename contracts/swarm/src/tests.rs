@@ -17,7 +17,7 @@ fn setup() -> Swarm {
     let mut s = Swarm::new(acc("owner.test"), acc("operator.test"), vec![acc("rev-1.test"), acc("rev-2.test"), acc("rev-3.test")], 2, U64(10 * MIN));
     for a in ["agent-1.test", "agent-2.test"] {
         ctx("backer.test", NEAR, 0);
-        s.add_agent(acc(a), a.into(), "z-ai/glm-5.3-flash".into(), HASH.into(), "https://example.test/spec.json".into());
+        s.add_agent(acc(a), a.into(), "z-ai/glm-5.3-flash".into(), HASH.into(), "https://example.test/spec.json".into(), false);
     }
     ctx("poster.test", NEAR / 2, 0);
     assert_eq!(s.post_job("Summarize this contract's risks.".into(), U64(MIN), U64(MIN), U64(5 * MIN)), 0);
@@ -25,12 +25,12 @@ fn setup() -> Swarm {
 }
 fn commit(s: &mut Swarm, agent: &str, price: u128, time: u64) {
     ctx(agent, 0, time);
-    s.commit_bid(0, commitment_for(0, &acc(agent), price, "salt"));
+    s.commit_bid(0, commitment_for(0, &acc(agent), price, "salt"), None);
 }
-fn reveal(s: &mut Swarm, agent: &str, price: u128) { ctx(agent, 0, MIN); s.reveal_bid(0, U128(price), "salt".into()); }
+fn reveal(s: &mut Swarm, agent: &str, price: u128) { ctx(agent, 0, MIN); s.reveal_bid(0, U128(price), "salt".into(), None); }
 fn submit(s: &mut Swarm, agent: &str, time: u64) {
     ctx(agent, 0, time);
-    s.submit_work(0, HASH.into(), "https://example.test/work".into(), "z-ai/glm-5.3-flash".into(), "model:req:resp".into(), "0xsig".into(), "0xkey".into());
+    s.submit_work(0, HASH.into(), "https://example.test/work".into(), "z-ai/glm-5.3-flash".into(), "model:req:resp".into(), "0xsig".into(), "0xkey".into(), None);
 }
 fn vote(s: &mut Swarm, reviewer: &str, pass: bool, time: u64) { ctx(reviewer, 0, time); s.review(0, pass, HASH.into(), "checked".into()); }
 fn agent(s: &Swarm, a: &str) -> Agent { s.get_agent(acc(a)).unwrap() }
@@ -42,6 +42,13 @@ fn held(s: &Swarm, accounts: &[&str]) -> u128 {
     let escrow: u128 = s.get_jobs(None, None).iter()
         .filter(|j| matches!(j.status, JobStatus::Open | JobStatus::Awarded | JobStatus::Submitted)).map(|j| j.bounty.0).sum();
     agents + credits + escrow
+}
+/// Runs `f` on its own thread, so it gets fresh contract storage, and returns the panic message ("" if none).
+fn failure(f: impl FnOnce() + Send + 'static) -> String {
+    match std::thread::spawn(f).join() {
+        Ok(()) => String::new(),
+        Err(e) => e.downcast_ref::<String>().cloned().or_else(|| e.downcast_ref::<&str>().map(|m| m.to_string())).unwrap_or_default(),
+    }
 }
 const EVERYONE: [&str; 6] = ["poster.test", "backer.test", "operator.test", "rev-1.test", "rev-2.test", "rev-3.test"];
 
@@ -95,15 +102,15 @@ fn a_failed_review_refunds_the_poster_and_the_bond_pays_the_reviewers() {
 fn an_unrevealed_bid_loses_its_bond_and_a_tie_goes_to_the_earlier_commit() {
     let mut s = setup();
     ctx("backer.test", NEAR, 0);
-    s.add_agent(acc("agent-3.test"), "three".into(), "m".into(), HASH.into(), "".into());
+    s.add_agent(acc("agent-3.test"), "three".into(), "m".into(), HASH.into(), "".into(), false);
     commit(&mut s, "agent-1.test", NEAR / 10, 1);
     commit(&mut s, "agent-2.test", NEAR / 10, 2);
     commit(&mut s, "agent-3.test", NEAR / 20, 3);
     reveal(&mut s, "agent-2.test", NEAR / 10);
     reveal(&mut s, "agent-1.test", NEAR / 10);
     ctx("anyone.test", 0, MIN + 1);
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| { let mut c = setup(); commit(&mut c, "agent-1.test", 1, 1); ctx("x.test", 0, MIN + 1); c.award(0); })).is_err(),
-        "award waits for the reveal window while a bid is still hidden");
+    let early = failure(|| { let mut c = setup(); commit(&mut c, "agent-1.test", 1, 1); ctx("x.test", 0, MIN + 1); c.award(0); });
+    assert!(early.contains("REVEAL_NOT_OVER"), "award waits for the reveal window while a bid is still hidden, got {early:?}");
     ctx("anyone.test", 0, 2 * MIN);
     s.award(0);
     assert_eq!(s.get_job(0).unwrap().winner, Some(acc("agent-1.test")));
@@ -126,7 +133,7 @@ fn an_agent_cannot_copy_another_agents_commitment() {
     let mut s = setup();
     commit(&mut s, "agent-1.test", NEAR / 5, 1);
     ctx("agent-2.test", 0, 2);
-    s.commit_bid(0, commitment_for(0, &acc("agent-1.test"), NEAR / 5, "salt"));
+    s.commit_bid(0, commitment_for(0, &acc("agent-1.test"), NEAR / 5, "salt"), None);
     reveal(&mut s, "agent-2.test", NEAR / 5);
 }
 
@@ -212,11 +219,9 @@ fn inference_is_billed_to_the_agent_by_the_operator_only_and_capped() {
     assert_eq!(agent(&s, "agent-1.test").balance.0, NEAR - MAX_CHARGE);
     assert_eq!(agent(&s, "agent-1.test").inference_spent.0, MAX_CHARGE);
     assert_eq!(credit(&s, "operator.test"), MAX_CHARGE);
-    for (who, amount) in [("backer.test", 1), ("operator.test", MAX_CHARGE + 1)] {
-        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let mut c = setup(); ctx(who, 0, 5); c.charge_inference(acc("agent-1.test"), U128(amount), "r".into());
-        }));
-        assert!(r.is_err(), "{who} charging {amount} must fail");
+    for (who, amount, expected) in [("backer.test", 1, "ONLY_OPERATOR"), ("agent-1.test", 1, "ONLY_OPERATOR"), ("operator.test", MAX_CHARGE + 1, "CHARGE_OUT_OF_RANGE")] {
+        let message = failure(move || { let mut c = setup(); ctx(who, 0, 5); c.charge_inference(acc("agent-1.test"), U128(amount), "r".into()); });
+        assert!(message.contains(expected), "{who} charging {amount}: expected {expected}, got {message:?}");
     }
     // An agent that is committed to a bid cannot be drained below its bond.
     commit(&mut s, "agent-2.test", NEAR / 5, 6);
@@ -234,11 +239,9 @@ fn only_the_backer_withdraws_an_agents_free_balance() {
     s.withdraw_agent(acc("agent-1.test"), U128(NEAR - BID_BOND));
     assert_eq!(credit(&s, "backer.test"), NEAR - BID_BOND);
     assert_eq!(agent(&s, "agent-1.test").locked.0, BID_BOND, "the locked bond stays");
-    for (who, amount) in [("agent-1.test", 1u128), ("poster.test", 1), ("backer.test", 2 * NEAR)] {
-        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let mut c = setup(); ctx(who, 0, 2); c.withdraw_agent(acc("agent-1.test"), U128(amount));
-        }));
-        assert!(r.is_err(), "{who} withdrawing {amount} must fail");
+    for (who, amount, expected) in [("agent-1.test", 1u128, "ONLY_BACKER"), ("poster.test", 1, "ONLY_BACKER"), ("backer.test", 2 * NEAR, "INSUFFICIENT_BALANCE")] {
+        let message = failure(move || { let mut c = setup(); ctx(who, 0, 2); c.withdraw_agent(acc("agent-1.test"), U128(amount)); });
+        assert!(message.contains(expected), "{who} withdrawing {amount}: expected {expected}, got {message:?}");
     }
 }
 
@@ -247,8 +250,13 @@ fn an_agent_out_of_balance_cannot_bid() {
     let mut s = setup();
     ctx("backer.test", 0, 1);
     s.withdraw_agent(acc("agent-1.test"), U128(NEAR - BID_BOND + 1));
-    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| commit(&mut s, "agent-1.test", NEAR / 5, 2)));
-    assert!(r.is_err());
+    assert_eq!(agent(&s, "agent-1.test").balance.0, BID_BOND - 1);
+    let message = failure(|| {
+        let mut c = setup(); ctx("backer.test", 0, 1);
+        c.withdraw_agent(acc("agent-1.test"), U128(NEAR - BID_BOND + 1));
+        commit(&mut c, "agent-1.test", NEAR / 5, 2);
+    });
+    assert!(message.contains("INSUFFICIENT_BALANCE"), "got {message:?}");
 }
 
 #[test]
@@ -261,4 +269,63 @@ fn a_failed_withdrawal_transfer_restores_the_credit() {
     ctx("swarm.test", 0, MIN + 2);
     assert!(!s.on_withdraw(acc("poster.test"), U128(NEAR / 2), Err(PromiseError::Failed)));
     assert_eq!(credit(&s, "poster.test"), NEAR / 2);
+}
+
+/// A hosted agent has no key. Its backer registers it under their own name and the operator acts for it.
+fn add_hosted(s: &mut Swarm) {
+    ctx("alice.test", NEAR, 0);
+    s.add_agent(acc("bot.alice.test"), "Alice's bot".into(), "z-ai/glm-5.3-flash".into(), HASH.into(), "https://example.test/bot.json".into(), true);
+}
+
+#[test]
+fn the_operator_runs_a_hosted_agent_from_bid_to_payout() {
+    let mut s = setup();
+    add_hosted(&mut s);
+    let bot = acc("bot.alice.test");
+    assert!(agent(&s, "bot.alice.test").hosted);
+    ctx("operator.test", 0, 1);
+    s.commit_bid(0, commitment_for(0, &bot, NEAR / 10, "s3cret"), Some(bot.clone()));
+    commit(&mut s, "agent-1.test", NEAR / 5, 2);
+    ctx("operator.test", 0, MIN);
+    s.reveal_bid(0, U128(NEAR / 10), "s3cret".into(), Some(bot.clone()));
+    reveal(&mut s, "agent-1.test", NEAR / 5);
+    ctx("anyone.test", 0, MIN + 1); s.award(0);
+    assert_eq!(s.get_job(0).unwrap().winner, Some(bot.clone()));
+    ctx("operator.test", 0, MIN + 2);
+    s.submit_work(0, HASH.into(), "https://example.test/work".into(), "m".into(), "t".into(), "0xsig".into(), "0xkey".into(), Some(bot.clone()));
+    vote(&mut s, "rev-1.test", true, MIN + 3);
+    vote(&mut s, "rev-2.test", true, MIN + 4);
+    assert_eq!(s.get_job(0).unwrap().status, JobStatus::Paid);
+    let fee = NEAR / 10 / 10;
+    assert_eq!(agent(&s, "bot.alice.test").balance.0, NEAR + NEAR / 10 - fee, "the hosted agent is paid, not the operator");
+    assert_eq!(credit(&s, "operator.test"), 0);
+    // Only the backer can take the earnings out.
+    ctx("alice.test", 0, MIN + 5);
+    s.withdraw_agent(bot, U128(NEAR / 10 - fee));
+    assert_eq!(credit(&s, "alice.test"), NEAR / 10 - fee);
+}
+
+#[test]
+fn nobody_but_the_operator_acts_for_a_hosted_agent_and_never_for_a_keyed_one() {
+    for (who, target, expected) in [
+        ("stranger.test", "bot.alice.test", "ONLY_OPERATOR_FOR_HOSTED"),
+        ("alice.test", "bot.alice.test", "ONLY_OPERATOR_FOR_HOSTED"),
+        ("operator.test", "agent-1.test", "NOT_HOSTED"),
+        ("operator.test", "nobody.test", "NOT_HOSTED"),
+    ] {
+        let message = failure(move || {
+            let mut s = setup(); add_hosted(&mut s);
+            ctx(who, 0, 1);
+            s.commit_bid(0, commitment_for(0, &acc(target), NEAR / 10, "salt"), Some(acc(target)));
+        });
+        assert!(message.contains(expected), "{who} for {target}: expected {expected}, got {message:?}");
+    }
+}
+
+#[test]
+#[should_panic(expected = "HOSTED_NAME_NOT_YOURS")]
+fn a_hosted_agent_must_be_named_under_its_backer() {
+    let mut s = setup();
+    ctx("mallory.test", NEAR, 0);
+    s.add_agent(acc("bot.alice.test"), "squat".into(), "m".into(), HASH.into(), "".into(), true);
 }
