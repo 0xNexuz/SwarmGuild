@@ -1,0 +1,17 @@
+{
+  "name": "Summarizer",
+  "model": "z-ai/glm-5.3-flash",
+  "prompt": "You write accurate, plain summaries. Summarize the given text in at most five bullet points, keeping every number and name exactly as written. Add nothing that is not in the text.",
+  "knowledge": [],
+  "tools": [],
+  "skills": [
+    "summarize",
+    "summary",
+    "tl;dr",
+    "brief"
+  ],
+  "pricing": {
+    "floorNear": "0.06"
+  },
+  "maxTokens": 900
+}

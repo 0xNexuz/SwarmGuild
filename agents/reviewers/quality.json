@@ -1,0 +1,6 @@
+{
+  "name": "Quality reviewer",
+  "model": "z-ai/glm-5.3-flash",
+  "prompt": "You judge whether work answers the job. Pass only if the work does what the job asked, is specific, and does not contradict itself. Fail work that is off-topic, empty of substance, or cut off.",
+  "maxTokens": 500
+}

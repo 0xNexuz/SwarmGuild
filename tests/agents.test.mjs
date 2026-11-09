@@ -1,14 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { decideBid, doWork, guardrails, reviewWork, manifestHash } from '../lib/agents.mjs';
+import { decideBid, doWork, guardrails, reviewWork } from '../lib/agents.mjs';
+import { fetchManifest, loadManifests, manifestHash, manifestProblems } from '../lib/manifest.mjs';
 import { costYocto, forgetAttestations, sha256, verifyProof } from '../lib/near-ai.mjs';
 import { commitment, nearToYocto, yoctoToNear } from '../lib/market.mjs';
 import { fakeCloud } from './fake-cloud.mjs';
 
-const workers = JSON.parse(fs.readFileSync(new URL('../agents/workers.json', import.meta.url)));
-const reviewers = JSON.parse(fs.readFileSync(new URL('../agents/reviewers.json', import.meta.url)));
-const [auditor, summarizer] = workers;
+const dir = name => new URL(`../agents/${name}/`, import.meta.url).pathname;
+const workerFiles = loadManifests(dir('workers'));
+const worker = slug => workerFiles.find(w => w.slug === slug).manifest;
+const reviewers = ['quality', 'safety', 'integrity'].map(slug => loadManifests(dir('reviewers')).find(r => r.slug === slug).manifest);
+const auditor = worker('auditor'), summarizer = worker('summarizer');
 const job = { id: 7, description: 'Audit this contract for security risks: fn pay() { transfer(all) }', bounty: nearToYocto('0.5').toString() };
 const rich = { balance: nearToYocto('1').toString() };
 const opts = cloud => { forgetAttestations(); return { apiKey: 'placeholder-test-key-not-real', fetchImpl: cloud.fetchImpl, delay: async () => {} }; };
@@ -41,20 +44,41 @@ test('work comes back with a TEE proof that verifies, and the job text is passed
   assert.equal(verifyProof(work.proof).verified, true, 'anyone can recheck the proof offline');
 });
 
-test('guardrails reject a wrong hash, a bad signature and leaked secrets without any model call', async () => {
+test('guardrails reject a wrong hash, a bad signature, swapped work and leaked secrets without any model call', async () => {
   const cloud = fakeCloud('fine work');
   const good = await doWork(auditor, job, opts(cloud));
   assert.equal(guardrails(job, good).pass, true);
-  assert.match(guardrails(job, { ...good, resultHash: 'f'.repeat(64) }).failures.join(' '), /does not match the hash/);
-  assert.match(guardrails(job, { ...good, proof: { ...good.proof, signedText: 'other' } }).failures.join(' '), /TEE signature/);
-  const leak = 'here: ed25519:' + '3'.repeat(88);
-  assert.match(guardrails(job, { ...good, result: leak, resultHash: sha256(leak) }).failures.join(' '), /private key/);
+  const why = submission => guardrails(job, submission).failures.join(' ');
+  assert.match(why({ ...good, resultHash: 'f'.repeat(64) }), /does not match the hash/);
+  assert.match(why({ ...good, proof: { ...good.proof, signedText: 'other' } }), /TEE signature/);
+  assert.match(why({ ...good, transcript: undefined }), /were not published/);
+  assert.match(why({ ...good, attestedKeys: ['0x' + '11'.repeat(20)] }), /TEE signature/, 'a key outside the attestation is refused');
+  // Work edited after the model signed it, with a matching hash, is still caught.
+  const edited = good.result + ' (edited)';
+  assert.match(why({ ...good, result: edited, resultHash: sha256(edited) }), /not the reply the model signed/);
+  // A real signed reply for another job cannot be passed off as this one.
+  const other = await doWork(auditor, { ...job, id: 8 }, opts(fakeCloud('fine work')));
+  assert.match(why(other), /not for this job/);
+  const leaky = await doWork(auditor, job, opts(fakeCloud('here: ed25519:' + '3'.repeat(88))));
+  assert.match(why(leaky), /private key/);
   const tampered = await doWork(auditor, job, opts(fakeCloud('x', { tamper: true })));
   assert.equal(guardrails(job, tampered).pass, false);
   const calls = cloud.calls.length;
   const review = await reviewWork(reviewers[0], job, { ...good, resultHash: 'f'.repeat(64) }, opts(cloud));
   assert.equal(review.vote, 'fail'); assert.equal(review.report.stage, 'guardrails');
   assert.equal(cloud.calls.length, calls, 'no inference is spent on work that fails the guardrails');
+});
+
+test('a tool runs before the model call and its output reaches the model as data', async () => {
+  const cloud = fakeCloud('ok');
+  const lookups = [];
+  const withAccount = { ...job, description: 'Audit the contract at vault.alice.testnet and evil.testnet for security risks.' };
+  const work = await doWork(auditor, withAccount, { ...opts(cloud), tools: { near_account: async id => { lookups.push(id); return { found: true, hasContract: true }; } } });
+  assert.deepEqual(lookups, ['vault.alice.testnet', 'evil.testnet']);
+  assert.match(cloud.calls[0].messages[1].content, /<tool name="near_account" account="vault.alice.testnet">\{"found":true/);
+  assert.equal(guardrails(withAccount, work).pass, true);
+  await doWork(summarizer, { ...withAccount, description: 'Summarize vault.alice.testnet' }, { ...opts(cloud), tools: { near_account: async id => lookups.push(id) } });
+  assert.equal(lookups.length, 2, 'an agent without the tool in its manifest does not get it');
 });
 
 test('a reviewer passes or fails by its model\'s verdict and abstains when it has none', async () => {
@@ -79,7 +103,24 @@ test('an injected job cannot reach the reviewer as an instruction', async () => 
   assert.match(request.messages[1].content, /^<job>[\s\S]*<\/job>\n<work>[\s\S]*<\/work>$/);
 });
 
-test('a manifest hash names the exact prompt, knowledge and tools', () => {
-  assert.match(manifestHash(auditor), /^[0-9a-f]{64}$/);
-  assert.notEqual(manifestHash(auditor), manifestHash({ ...auditor, prompt: auditor.prompt + ' ' }));
+test('a manifest hash names the exact bytes, and every shipped manifest is valid', () => {
+  for (const { manifest, hash, file } of [...workerFiles, ...loadManifests(dir('reviewers'))]) {
+    assert.match(hash, /^[0-9a-f]{64}$/);
+    const problems = manifestProblems({ skills: ['review'], pricing: { floorNear: '0.01' }, ...manifest });
+    assert.deepEqual(problems, [], file);
+  }
+  assert.notEqual(manifestHash('{"a":1}'), manifestHash('{"a": 1}'));
+  assert.match(manifestProblems({ ...auditor, model: 'gpt-something' }).join(' '), /model/);
+  assert.match(manifestProblems({ ...auditor, tools: ['shell'] }).join(' '), /tools/);
+  assert.match(manifestProblems({ ...auditor, skills: [] }).join(' '), /never bids/);
+  assert.match(manifestProblems({ ...auditor, maxTokens: 100000 }).join(' '), /maxTokens/);
+});
+
+test('a hosted manifest is fetched over https and refused unless it matches the hash on chain', async () => {
+  const bytes = Buffer.from(JSON.stringify(summarizer));
+  const fetchImpl = async () => new Response(bytes);
+  assert.equal((await fetchManifest('https://example.test/a.json', manifestHash(bytes), { fetchImpl })).name, 'Summarizer');
+  await assert.rejects(fetchManifest('https://example.test/a.json', 'f'.repeat(64), { fetchImpl }), /does not match the hash/);
+  await assert.rejects(fetchManifest('http://example.test/a.json', manifestHash(bytes), { fetchImpl }), /https/);
+  await assert.rejects(fetchManifest('https://example.test/a.json', manifestHash('{}'), { fetchImpl: async () => new Response('{}') }), /not valid/);
 });

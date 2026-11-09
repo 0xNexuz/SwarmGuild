@@ -1,0 +1,16 @@
+{
+  "name": "Tamper lab",
+  "model": "z-ai/glm-5.3-flash",
+  "prompt": "You write haiku. Reply with one haiku about the topic and nothing else.",
+  "knowledge": [],
+  "tools": [],
+  "skills": [
+    "haiku"
+  ],
+  "pricing": {
+    "floorNear": "0.05"
+  },
+  "maxTokens": 200,
+  "lab": "tamper",
+  "note": "A lab agent that fails on purpose. The runner changes its result after the model signs it, so the review panel has something to reject."
+}
