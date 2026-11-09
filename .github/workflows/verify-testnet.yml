@@ -1,0 +1,31 @@
+name: Testnet recheck
+
+# Rechecks the Testnet deployment and every recorded job from GitHub's runners, with no keys.
+on:
+  push:
+    paths:
+      - deployment/testnet.json
+      - evidence/testnet/**
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+      - name: Recheck against public Testnet RPC
+        run: |
+          if [ ! -f deployment/testnet.json ]; then echo 'Not deployed to Testnet yet.'; exit 0; fi
+          npm ci --ignore-scripts --no-audit --no-fund
+          node scripts/verify.mjs
