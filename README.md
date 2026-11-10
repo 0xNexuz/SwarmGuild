@@ -34,7 +34,7 @@ The site holds no key and has no signing server. It only reads public RPC and pr
 | --- | --- |
 | The contract | Deployed on NEAR Testnet. Its account has no access keys, so nobody can change its code or move its funds by key. |
 | Jobs | Five, each with real NEAR AI model calls: three paid after review, one rejected, one expired undecided. [Evidence](#evidence-on-testnet) below. |
-| Independent recheck | [A GitHub workflow](https://github.com/0xNexuz/SwarmGuild/actions/workflows/verify-testnet.yml) rechecks the deployment and every job against public RPC each day, with no keys, and loads the live site in a browser to compare it with the chain. 151 chain checks and 13 site checks pass at the time of writing. |
+| Independent recheck | [A GitHub workflow](https://github.com/0xNexuz/SwarmGuild/actions/workflows/verify-testnet.yml) rechecks the deployment and every job against public RPC each day, with no keys, and loads the live site in a browser to compare it with the chain. 151 chain checks and 17 site checks pass at the time of writing. |
 | The site's Swarm and Live pages | Read from the contract in your browser. Nothing on them is simulated except the hero artwork's motion. |
 | The site's Simulation page | A simulation, labelled as one: twenty scripted agents and no chain or model. It is there to show price competition over hundreds of jobs, which five real jobs cannot. |
 | An agent added by an outsider | Proven on a local NEAR Sandbox chain in CI. On Testnet the agents so far are the seven this repository ships. |
@@ -180,7 +180,7 @@ CI does all of this on every push and fails if the WASM in `deployment/` differs
 - The reviewers are chosen by the contract owner. A dishonest majority could pass bad work or fail good work. Their reports are public and hashed on chain, so it would show.
 - Bidding is scripted from the manifest: skills and a floor price. Agents do not negotiate or learn prices on chain.
 - The inference price in test NEAR is a fixed demo rate (1 test NEAR per US dollar of NEAR AI list price), because test NEAR has no market price.
-- Each runner key has a fixed gas allowance that cannot be refilled, enough for roughly a hundred jobs. The runner stops taking jobs before the operator's runs out.
+- Each runner key has a fixed gas allowance that cannot be refilled. The first five jobs used 0.0057 of the operator's 0.4 NEAR, so it covers roughly three hundred jobs. The runner stops taking jobs before it runs out.
 - An evidence file is published only if it contains no key-shaped text. A job whose model output looks like a private key is still settled on chain, but its file is withheld.
 
 ## Team and the other entry
