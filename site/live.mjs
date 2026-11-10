@@ -1,8 +1,10 @@
 // Everything real on the site. It is read in the visitor's browser from public NEAR RPC and from the evidence
-// files the on-chain result URLs point to. Posting a job or adding an agent prepares an unsigned transaction
-// for the visitor's own wallet; the site holds no key. Nothing here comes from the simulation.
+// files the on-chain result URLs point to. Posting a job or adding an agent hands a transaction to the
+// visitor's own wallet through NEAR Connect; the site holds no key. Nothing here comes from the simulation.
 import { manifestProblems, MAX_MANIFEST_BYTES } from './manifest-rules.mjs';
-import { addAgentCall, agentIdFor, cliCommand, encodeFunctionCallTx, isAccountId, nearToYocto, postJobCall, TGAS, walletSignUrl, withdrawCreditCall } from './tx.mjs';
+import { addAgentCall, agentIdFor, cliCommand, isAccountId, postJobCall, walletTransaction, withdrawCreditCall } from './tx.mjs';
+import nearConnect from './vendor/near-connect.js'; // a CommonJS package, bundled: its exports are on the default export
+const { NearConnector } = nearConnect;
 
 export const GUILD = 'guild.swarmguild-99c7a546.testnet';
 export const OWNER = GUILD.slice('guild.'.length);
@@ -10,7 +12,6 @@ const RPCS = ['https://rpc.testnet.fastnear.com', 'https://rpc.testnet.near.org'
 const RAW = 'https://raw.githubusercontent.com/0xNexuz/SwarmGuild/main';
 const EXPLORER = 'https://testnet.nearblocks.io';
 const REPO = 'https://github.com/0xNexuz/SwarmGuild';
-const WALLET = 'https://testnet.mynearwallet.com/';
 const RUNNER_RUNS = 'https://api.github.com/repos/0xNexuz/SwarmGuild/actions/workflows/runner.yml/runs?per_page=1';
 const BOND = 10n ** 22n;
 const SETTLED = ['Paid', 'Rejected', 'Cancelled', 'Expired'];
@@ -46,14 +47,10 @@ async function view(method, args = {}) {
   return JSON.parse(new TextDecoder().decode(new Uint8Array(result.result)));
 }
 
-/** An unsigned transaction for `call`, ready for the visitor's wallet, plus the same call as a near-cli command. */
+/** Confirms the signer exists on Testnet and returns the call as a near-cli command. */
 export async function prepare(call) {
-  const [keys, block] = await Promise.all([rpc({ request_type: 'view_access_key_list', account_id: call.signerId }), rpcCall('block', { finality: 'final' })]);
-  const full = keys.keys.find(k => k.access_key.permission === 'FullAccess');
-  if (!full) throw new Error(`${call.signerId} has no full-access key, so it cannot attach a deposit.`);
-  const bytes = encodeFunctionCallTx({ signerId: call.signerId, publicKey: full.public_key, nonce: BigInt(full.access_key.nonce) + 1n, receiverId: call.receiverId,
-    blockHash: block.header.hash, method: call.method, args: call.args, gas: BigInt(call.gasTgas) * TGAS, deposit: nearToYocto(call.depositNear) });
-  return { walletUrl: walletSignUrl(WALLET, bytes, `${location.origin}${location.pathname}#live`), command: cliCommand(call) };
+  await rpc({ request_type: 'view_account', account_id: call.signerId });
+  return { command: cliCommand(call) };
 }
 
 /** One read of the whole contract: about ten RPC calls. */
@@ -180,11 +177,32 @@ export function mountLive($) {
   }
   listeners.add(renderLanding);
 
-  /* ---------- the visitor's own account, credit and transactions ---------- */
+  /* ---------- the visitor's own wallet, account, credit and transactions ---------- */
+  // NEAR Connect shows the wallets that work on Testnet (Meteor, Intear, Ledger and others) and runs each in its own sandbox.
+  const connector = new NearConnector({ network: 'testnet', features: { testnet: true, signAndSendTransaction: true }, footerBranding: null });
+  let walletAccount = null;
   const accountInputs = [...document.querySelectorAll('[data-account]')];
   const account = () => accountInputs[0].value.trim().toLowerCase();
   const remember = value => { for (const input of accountInputs) if (input.value !== value) input.value = value; try { localStorage.setItem('swarmguild.account', value); } catch { /* private mode */ } };
   try { remember(localStorage.getItem('swarmguild.account') ?? ''); } catch { /* private mode */ }
+  function showWallet() {
+    for (const el of document.querySelectorAll('[data-wallet-state]')) el.textContent = walletAccount ? `Connected: ${walletAccount}` : 'No wallet connected';
+    for (const el of document.querySelectorAll('[data-connect]')) el.textContent = walletAccount ? 'Disconnect' : 'Connect wallet';
+    for (const input of accountInputs) input.readOnly = Boolean(walletAccount);
+  }
+  function setWallet(id) { walletAccount = id || null; if (walletAccount) remember(walletAccount); showWallet(); showCredit(); }
+  connector.on('wallet:signIn', t => setWallet(t.accounts?.[0]?.accountId));
+  connector.on('wallet:signOut', () => setWallet(null));
+  connector.getConnectedWallet().then(({ accounts }) => setWallet(accounts?.[0]?.accountId)).catch(() => showWallet());
+  async function connectWallet() {
+    const wallet = await connector.connect();
+    const id = (await wallet.getAccounts())[0]?.accountId;
+    setWallet(id); return id;
+  }
+  for (const el of document.querySelectorAll('[data-connect]')) el.addEventListener('click', async () => {
+    try { if (walletAccount) await connector.disconnect(); else await connectWallet(); } catch { /* the visitor closed the picker */ }
+  });
+
   async function showCredit() {
     const box = $('credit'); const id = account();
     if (!isAccountId(id)) { box.hidden = true; return; }
@@ -196,20 +214,36 @@ export function mountLive($) {
   }
   for (const input of accountInputs) input.addEventListener('change', () => { remember(input.value.trim().toLowerCase()); showCredit(); });
 
-  /** Shows a prepared transaction: a link to sign it in the wallet, and the same call as a terminal command. */
+  /** Shows a prepared call: a button that signs it in the visitor's wallet, and the same call as a terminal command. */
   async function offer(out, call, summary) {
     out.hidden = false; out.innerHTML = '<p class="muted">Preparing the transaction…</p>';
     try {
-      const { walletUrl, command } = await prepare(call);
-      out.innerHTML = `<p>${summary}</p><p class="actions"><a class="btn" href="${esc(walletUrl)}">Sign in MyNearWallet</a><button class="btn ghost small" type="button" data-copy>Copy near-cli command</button></p><pre class="code cmd"></pre>
-        <p class="muted">The wallet shows the call and the deposit before you approve. This site never sees your key.</p>`;
+      const { command } = await prepare(call);
+      out.innerHTML = `<p>${summary}</p><p class="actions"><button class="btn" type="button" data-sign>Sign with your wallet</button><button class="btn ghost small" type="button" data-copy>Copy near-cli command</button></p><pre class="code cmd"></pre>
+        <p class="muted" data-status>Your wallet shows the call and the deposit before you approve. This site never sees your key.</p>`;
       out.querySelector('pre').textContent = command;
       out.querySelector('[data-copy]').addEventListener('click', async e => { try { await navigator.clipboard.writeText(command); e.target.textContent = 'Copied'; } catch { e.target.textContent = 'Select the text below'; } });
+      const button = out.querySelector('[data-sign]'), status = out.querySelector('[data-status]');
+      button.addEventListener('click', async () => {
+        try {
+          const id = walletAccount ?? await connectWallet();
+          if (!id) return;
+          if (id !== call.signerId) { out.innerHTML = `<p>Your wallet is connected as <b>${esc(id)}</b>. Press the button above again to prepare the transaction for that account.</p>`; return; }
+          button.disabled = true; button.textContent = 'Waiting for your wallet…';
+          const result = await (await connector.wallet()).signAndSendTransaction(walletTransaction(call));
+          const hash = result?.transaction?.hash ?? result?.transaction_outcome?.id;
+          out.innerHTML = `<p class="ok">Sent${hash ? `: ${txLink(hash)}` : ''}. It shows up on this page within a few seconds.</p>`;
+          refresh(); showCredit();
+        } catch (error) {
+          button.disabled = false; button.textContent = 'Sign with your wallet';
+          status.className = 'bad'; status.textContent = `The wallet did not send it: ${error?.message ?? error}. You can try again, or use the near-cli command.`;
+        }
+      });
     } catch (e) {
       out.innerHTML = `<p class="bad">${e.message === 'UNKNOWN_ACCOUNT' ? `${esc(call.signerId)} does not exist on NEAR Testnet.` : `Could not prepare the transaction: ${esc(e.message)}`}</p>`;
     }
   }
-  const needAccount = out => { const id = account(); if (isAccountId(id) && id.endsWith('.testnet')) return id; out.hidden = false; out.innerHTML = '<p class="bad">Enter your NEAR Testnet account, for example you.testnet.</p>'; return null; };
+  const needAccount = out => { const id = account(); if (isAccountId(id) && id.endsWith('.testnet')) return id; out.hidden = false; out.innerHTML = '<p class="bad">Connect your wallet, or enter your NEAR Testnet account, for example you.testnet.</p>'; return null; };
 
   $('post-form').addEventListener('submit', e => {
     e.preventDefault(); const out = $('post-out'); const data = new FormData(e.target); const id = needAccount(out); if (!id) return;

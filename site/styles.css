@@ -243,3 +243,6 @@ pre.code.cmd{font-size:.66rem;max-height:150px;border-color:var(--rule);user-sel
 .form{grid-template-columns:minmax(0,1fr)}
 .out{min-width:0}.out p{overflow-wrap:anywhere}
 .linkish{background:none;border:0;padding:0;font:inherit;color:var(--ink);text-decoration:underline;cursor:pointer}
+.wallet-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font:500 .68rem var(--mono);color:var(--graphite)}
+.form input[readonly]{background:var(--paper-2);color:var(--graphite)}
+.out .ok{color:var(--signal);font-weight:600}

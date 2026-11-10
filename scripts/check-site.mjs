@@ -19,7 +19,7 @@ main(async () => {
   for (let attempt = 0; attempt < 18 && !ready; attempt++) {
     await page.goto(`${base}/?t=${Date.now()}#live`, { waitUntil: 'load' });
     ready = await page.locator('#live-jobs tr.row').first().waitFor({ timeout: 20000 }).then(() => true, () => false);
-    ready = ready && await page.locator('#post-form').count() === 1; // the version with the real actions
+    ready = ready && await page.locator('#post-form [data-connect]').count() === 1; // the version with the wallet connector
   }
   const results = []; const check = (name, ok, detail = '') => results.push({ check: name, ok: Boolean(ok), detail: String(detail) });
   check('The Testnet page loads and lists jobs', ready);
@@ -42,16 +42,18 @@ main(async () => {
       check(`Job ${paid.id}: the browser rehashed the result and both reviewer reports, and they match the chain`, good >= 3 && !detail.includes('✗'), `${good} matches`);
       check(`Job ${paid.id}: the agent's result is shown`, (await page.locator('#live-jobs .result pre').innerText()).length > 20);
     }
-    // Real use: the site must turn a job into an unsigned post_job transaction for the visitor's wallet.
+    // Real use: the visitor's own wallet signs. The picker must offer wallets that work on Testnet, and the form must turn a job into a post_job call.
+    await page.locator('#post-form [data-connect]').click();
+    const picker = page.locator('.hot-connector-popup');
+    const offered = await picker.waitFor({ state: 'attached', timeout: 30000 }).then(() => picker.innerText(), () => '');
+    check('Connect wallet: the picker offers Meteor Wallet for Testnet', /Meteor Wallet/.test(offered), offered.replace(/\s+/g, ' ').slice(0, 200) || 'no picker');
+    await page.keyboard.press('Escape'); await page.mouse.click(5, 5);
+    await picker.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
     await page.locator('#post-form [name=account]').fill(plan.owner); await page.locator('#post-form [name=account]').blur();
     await page.locator('#post-form [name=description]').fill('Summarize this text: a site check.');
     await page.locator('#post-form button[type=submit]').click();
-    const signLink = page.locator('#post-out a.btn');
-    const prepared = await signLink.waitFor({ timeout: 30000 }).then(() => true, () => false);
-    const href = prepared ? new URL(await signLink.getAttribute('href')) : null;
-    const txBytes = href ? Buffer.from(href.searchParams.get('transactions') ?? '', 'base64').toString('latin1') : '';
-    check('Post a job: it prepares an unsigned post_job transaction to the guild for the wallet', prepared && href.origin === 'https://testnet.mynearwallet.com' && href.pathname === '/sign'
-      && txBytes.includes('post_job') && txBytes.includes(plan.guild) && txBytes.includes(plan.owner), prepared ? href.origin + href.pathname : await page.locator('#post-out').innerText().catch(() => 'no output'));
+    const prepared = await page.locator('#post-out [data-sign]').waitFor({ timeout: 30000 }).then(() => true, () => false);
+    check('Post a job: it prepares a post_job call for the visitor\'s wallet to sign', prepared && /0\.20 NEAR/.test(await page.locator('#post-out').innerText()), prepared ? '' : await page.locator('#post-out').innerText().catch(() => 'no output'));
     check('Post a job: it prints the same call as a near-cli command', prepared && (await page.locator('#post-out pre').innerText()).includes(`call-function as-transaction ${plan.guild} post_job`));
     await page.goto(`${base}/?t=${Date.now()}#swarm`, { waitUntil: 'load' });
     const landed = await page.locator('#real-flight .phase-name').first().waitFor({ timeout: 30000 }).then(() => true, () => false);
