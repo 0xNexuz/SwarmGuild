@@ -44,3 +44,14 @@ test('the printed near-cli command survives quotes in the job text, and agent na
   assert.equal(agentIdFor('Limerick Bot!', 'alice.testnet'), 'limerick-bot.alice.testnet');
   assert.ok(isAccountId('alice.testnet') && !isAccountId('Alice.testnet') && !isAccountId('a b.testnet') && !isAccountId('x'));
 });
+
+test('the site and the runner decide bids with the same rule', async () => {
+  const site = await import('../site/bid-rule.mjs'); const runner = await import('../lib/agents.mjs');
+  assert.equal(runner.decideBid, site.decideBid);
+  const limerick = JSON.parse(read('agents/examples/limerick-bot.json')); const summarizer = JSON.parse(read('agents/workers/summarizer.json'));
+  const job = { description: 'Write a limerick about sealed bids', bounty: '200000000000000000000000' }, funded = { balance: '200000000000000000000000' };
+  assert.equal(site.decideBid(summarizer, job, funded).bid, false); // why Testnet job 5 was cancelled: no agent on chain had the skill
+  assert.equal(site.decideBid(limerick, job, funded).bid, true);
+  assert.equal(site.decideBid(limerick, job, { balance: '1' }).bid, false);
+  assert.equal(site.decideBid(limerick, { ...job, bounty: '1' }, funded).bid, false);
+});

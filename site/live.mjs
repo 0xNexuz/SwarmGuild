@@ -2,7 +2,8 @@
 // files the on-chain result URLs point to. Posting a job or adding an agent hands a transaction to the
 // visitor's own wallet through NEAR Connect; the site holds no key. Nothing here comes from the simulation.
 import { manifestProblems, MAX_MANIFEST_BYTES } from './manifest-rules.mjs';
-import { addAgentCall, agentIdFor, cliCommand, isAccountId, postJobCall, walletTransaction, withdrawCreditCall } from './tx.mjs';
+import { decideBid } from './bid-rule.mjs';
+import { addAgentCall, agentIdFor, cliCommand, isAccountId, nearToYocto, postJobCall, walletTransaction, withdrawCreditCall } from './tx.mjs';
 import nearConnect from './vendor/near-connect.js'; // a CommonJS package, bundled: its exports are on the default export
 const { NearConnector } = nearConnect;
 
@@ -267,14 +268,43 @@ export function mountLive($) {
       out.innerHTML = `<p class="bad">${e.message === 'UNKNOWN_ACCOUNT' ? `${esc(call.signerId)} does not exist on NEAR Testnet.` : `Could not prepare the transaction: ${esc(e.message)}`}</p>`;
     }
   }
+  /** Which agents on chain will bid on this job: the runner's own rule, run on each agent's manifest once its bytes match the hash on chain. */
+  const manifests = new Map();
+  async function manifestOf(agent) {
+    if (!manifests.has(agent.spec_hash)) {
+      const bytes = await (await fetch(agent.spec_url)).arrayBuffer();
+      const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(b => b.toString(16).padStart(2, '0')).join('');
+      if (hash !== agent.spec_hash) throw new Error('The manifest no longer matches its hash on chain.');
+      manifests.set(agent.spec_hash, JSON.parse(new TextDecoder().decode(bytes)));
+    }
+    return manifests.get(agent.spec_hash);
+  }
+  async function bidders(description, bountyNear) {
+    const names = [], skills = new Set();
+    const workers = chain ? chain.agents.filter(([id]) => !chain.config.reviewers.includes(id)) : [];
+    await Promise.all(workers.map(async ([, agent]) => {
+      try {
+        const manifest = await manifestOf(agent);
+        for (const skill of manifest.skills ?? []) skills.add(skill);
+        if (decideBid(manifest, { description, bounty: nearToYocto(bountyNear) }, agent).bid) names.push(agent.name);
+      } catch { /* the runner refuses an agent whose manifest cannot be read or has changed, so it will not bid */ }
+    }));
+    return { names: names.sort(), skills: [...skills].sort() };
+  }
+
   const needAccount = out => { const id = account(); if (isAccountId(id) && id.endsWith('.testnet')) return id; out.hidden = false; out.innerHTML = '<p class="bad">Connect your wallet, or enter your NEAR Testnet account, for example you.testnet.</p>'; return null; };
 
-  $('post-form').addEventListener('submit', e => {
+  $('post-form').addEventListener('submit', async e => {
     e.preventDefault(); const out = $('post-out'); const data = new FormData(e.target); const id = needAccount(out); if (!id) return;
     const description = String(data.get('description')).trim(); const bounty = String(data.get('bounty')).trim();
     if (!description || description.length > 2000 || !(Number(bounty) >= 0.05)) { out.hidden = false; out.innerHTML = '<p class="bad">Describe the job in up to 2,000 characters and offer at least 0.05 NEAR.</p>'; return; }
-    const matched = chain ? chain.agents.filter(([aid, a]) => !chain.config.reviewers.includes(aid)).length : 0;
-    offer(out, postJobCall(GUILD, id, description, bounty), `This posts your job with <b>${esc(bounty)} NEAR</b> held by the contract. ${matched} agents will see it. Bids seal for two minutes, then the work and the review take about two more.`);
+    out.hidden = false; out.innerHTML = '<p class="muted">Checking which agents will bid…</p>';
+    const { names, skills } = await bidders(description, bounty);
+    const who = names.length
+      ? `${names.map(n => `<b>${esc(n)}</b>`).join(', ').replace(/, (?=[^,]*$)/, ' and ')} will bid. Bids seal for two minutes, then the work and the review take about two more.`
+      : `<span class="bad">No agent on chain bids on this job, so it would be cancelled and the bounty returned to you as credit.</span> Agents bid when the job mentions one of their skills${skills.length ? `: ${esc(skills.join(', '))}` : ''}, and when the bounty covers their floor price.`;
+    const offline = /^(offline|not started)/.test(runner) ? ' <span class="bad">The runner that hosts the agents is offline right now, so nobody will bid until it is back.</span>' : '';
+    offer(out, postJobCall(GUILD, id, description, bounty), `This posts your job with <b>${esc(bounty)} NEAR</b> held by the contract. ${who}${offline}`);
   });
   $('credit').querySelector('button').addEventListener('click', () => { const out = $('post-out'); const id = needAccount(out); if (id) offer(out, withdrawCreditCall(GUILD, id), 'This moves your credit from the contract to your account.'); });
 
