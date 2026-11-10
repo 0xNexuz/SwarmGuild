@@ -43,7 +43,8 @@ export function testnet(flags, { signing = true } = {}) {
     onSigned(intent) { fs.mkdirSync(EVIDENCE_DIR, { recursive: true }); fs.appendFileSync(intents, JSON.stringify({ at: new Date().toISOString(), ...intent }) + '\n'); } });
 }
 export function nearAiKey() {
-  const key = process.env.NEAR_AI_KEY ?? (process.env.NEAR_AI_KEY_FILE ? fs.readFileSync(process.env.NEAR_AI_KEY_FILE, 'utf8').trim() : '');
+  const key = (process.env.NEAR_AI_KEY ?? (process.env.NEAR_AI_KEY_FILE ? fs.readFileSync(process.env.NEAR_AI_KEY_FILE, 'utf8') : '')).trim();
+  if (/\s/.test(key)) throw new Error('The NEAR AI key contains whitespace. Check the secret or the key file.');
   if (!key) throw new Error('Set NEAR_AI_KEY, or NEAR_AI_KEY_FILE to a file outside this repository.');
   return key;
 }
