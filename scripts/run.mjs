@@ -34,5 +34,5 @@ main(async () => {
     jobId = await runner.postJob(flags.poster ?? plan.owner, description, nearToYocto(bounty));
   }
   const end = await runner.runJob(jobId);
-  console.log(JSON.stringify({ jobId, status: end.status, evidence: `evidence/testnet/jobs/${jobId}.json` }));
+  console.log(JSON.stringify({ jobId, status: end.status, ...(end.undecided ? { undecided: true, resumeAfter: end.expiresAt } : {}), evidence: `evidence/testnet/jobs/${jobId}.json` }));
 });

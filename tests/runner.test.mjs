@@ -142,3 +142,46 @@ test('if the model is down the runner waits and retries, and late work is expire
   assert.equal((await runner.runJob(jobId)).status, 'Expired');
   assert.equal(chain.state.credits.get(owner), N('0.3') + 10n ** 22n);
 });
+
+test('the model reasons before it answers, so every call gets headroom on top of the manifest budget', async () => {
+  const { runner, cloud } = await swarm();
+  const jobId = await runner.postJob(owner, 'Give a summary of NEAR access keys.', N('0.3'));
+  await runner.runJob(jobId);
+  const budgets = cloud.calls.map(c => c.max_tokens);
+  assert.deepEqual(budgets, [900 + 3000, 500 + 3000, 500 + 3000]);
+});
+
+test('a reviewer whose model gives no verdict abstains, says why, and is asked again', async () => {
+  let reviews = 0;
+  const { chain, runner, store, logs } = await swarm({ cloud: fakeCloud(answers({ verdict: () => (++reviews === 1 ? '' : '{"pass": true, "reasons": ["Fine."]}') })) });
+  const jobId = await runner.postJob(owner, 'Give a summary of NEAR access keys.', N('0.3'));
+  assert.equal((await runner.runJob(jobId)).status, 'Paid');
+  const record = store.readJob(jobId);
+  assert.equal(record.abstentions.length, 1);
+  assert.match(logs.join('\n'), /abstained \(attempt 1 of 3\): The reviewer model did not return a verdict/);
+  assert.equal(chain.state.jobs[jobId].reviews.length, 2);
+  assert.ok(record.reviews.every(r => r.txHash), 'only real votes are listed as reviews');
+});
+
+test('if the panel never decides, the runner stops asking, says when the job can be expired, and expires it then', async () => {
+  const { chain, runner, store, cloud, logs } = await swarm({ cloud: fakeCloud(answers({ verdict: 'I cannot decide.' })) });
+  const jobId = await runner.postJob(owner, 'Give a summary of NEAR access keys.', N('0.3'));
+  const first = await runner.runJob(jobId);
+  assert.equal(first.done, false); assert.equal(first.undecided, true); assert.equal(first.status, 'Submitted');
+  assert.equal(store.readJob(jobId).abstentions.length, 9, 'three reviewers, three attempts each');
+  assert.match(logs.at(-1), /has not decided/);
+  const calls = cloud.calls.length;
+  chain.advance(3600);
+  assert.equal((await runner.runJob(jobId)).status, 'Expired');
+  assert.equal(cloud.calls.length, calls, 'no model call is made once the review window is over');
+  assert.equal(chain.state.credits.get(owner), N('0.3'), 'the bounty goes back');
+  const s = agentOf(chain, 'summarizer');
+  assert.equal(s.locked, 0n); assert.equal(s.jobs_failed, 0, 'the agent keeps its bond: it did its part');
+});
+
+test('a worker whose model returns nothing does not submit empty work', async () => {
+  const { chain, runner } = await swarm({ cloud: fakeCloud(answers({ work: '   ' })) });
+  const jobId = await runner.postJob(owner, 'Give a summary of NEAR access keys.', N('0.3'), { workSeconds: 60 });
+  assert.equal((await runner.runJob(jobId)).status, 'Expired');
+  assert.equal(chain.state.txs.filter(t => t.method === 'submit_work').length, 0);
+});
