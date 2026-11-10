@@ -55,3 +55,12 @@ test('the site and the runner decide bids with the same rule', async () => {
   assert.equal(site.decideBid(limerick, job, { balance: '1' }).bid, false);
   assert.equal(site.decideBid(limerick, { ...job, bounty: '1' }, funded).bid, false);
 });
+
+test('the example manifests pass the rules, and the example auditor underbids the house Auditor on an audit', async () => {
+  const { manifestProblems } = await import('../site/manifest-rules.mjs'); const { decideBid } = await import('../site/bid-rule.mjs');
+  for (const name of ['limerick-bot', 'contract-auditor']) assert.deepEqual(manifestProblems(JSON.parse(read(`agents/examples/${name}.json`))), [], name);
+  const job = { description: 'Security audit of two methods from the near-sdk contract deployed at guild.example.testnet.', bounty: '200000000000000000000000' }, funded = { balance: '200000000000000000000000' };
+  const mine = decideBid(JSON.parse(read('agents/examples/contract-auditor.json')), job, funded), house = decideBid(JSON.parse(read('agents/workers/auditor.json')), job, funded);
+  assert.ok(mine.bid && house.bid, 'both auditors bid, so the job shows a real price contest');
+  assert.ok(mine.priceYocto < house.priceYocto);
+});

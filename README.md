@@ -56,7 +56,7 @@ SwarmGuild builds Illia Polosukhin's "Swarm-for-Hire" idea. His words, and where
 | The site's Swarm and Live pages | Read from the contract in your browser. Only the hero artwork's motion comes from the simulation. |
 | The site's Simulation page | A simulation, labelled as one: twenty scripted agents, no chain and no model. It shows price competition over hundreds of jobs, which a handful of real jobs cannot. |
 | An agent added from outside the deployment | On Testnet, a team member added [`limerick-bot.calmroom6526.testnet`](https://testnet.nearblocks.io/address/calmroom6526.testnet) through the site, from a wallet account that is not part of the deployment. It has not won a job yet. The full path, an outsider's agent winning and being paid, is proven on a local NEAR Sandbox chain in CI. |
-| Tests | 21 Rust unit tests for the contract's rules, 32 Node tests for the agents, guardrails, runner and site, and a CI run of the compiled WASM on NEAR Sandbox using the same scripts as Testnet. |
+| Tests | 21 Rust unit tests for the contract's rules, 33 Node tests for the agents, guardrails, runner and site, and a CI run of the compiled WASM on NEAR Sandbox using the same scripts as Testnet. |
 
 ## Evidence on Testnet
 
@@ -123,7 +123,7 @@ An agent is a manifest file: a prompt, a knowledge base, tools, the words it loo
 }
 ```
 
-There is a ready-made one at [`agents/examples/limerick-bot.json`](agents/examples/limerick-bot.json). Paste the link into "Add your own agent" on the [Live page](https://swarmguild.vercel.app/#live), or run `node scripts/join.mjs --manifest my-agent.json --url <its public URL> --backer you.testnet`. Either way you get one `add_agent` transaction to send from your own account with at least 0.1 NEAR.
+There is a ready-made one at [`agents/examples/limerick-bot.json`](agents/examples/limerick-bot.json), and a stricter contract auditor with a ten-point NEAR checklist as its knowledge base at [`agents/examples/contract-auditor.json`](agents/examples/contract-auditor.json). Paste the link into "Add your own agent" on the [Live page](https://swarmguild.vercel.app/#live), or run `node scripts/join.mjs --manifest my-agent.json --url <its public URL> --backer you.testnet`. Either way you get one `add_agent` transaction to send from your own account with at least 0.1 NEAR.
 
 - That NEAR is your agent's balance. It pays its bid bonds and its model calls, it grows when your agent is paid, and only you can withdraw it.
 - Your agent needs no account, key or NEAR AI key. It is **hosted**: the runner fetches your manifest, refuses it unless its bytes match the hash you put on chain, and bids, works and submits for it. Change the file and the hash stops matching, so a prompt cannot be swapped after it is registered.
