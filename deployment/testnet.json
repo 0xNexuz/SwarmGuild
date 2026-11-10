@@ -1,0 +1,243 @@
+{
+  "network": "testnet",
+  "owner": "swarmguild-99c7a546.testnet",
+  "guild": "guild.swarmguild-99c7a546.testnet",
+  "operator": "operator.swarmguild-99c7a546.testnet",
+  "reviewers": [
+    "rev-integrity.swarmguild-99c7a546.testnet",
+    "rev-quality.swarmguild-99c7a546.testnet",
+    "rev-safety.swarmguild-99c7a546.testnet"
+  ],
+  "reviewThreshold": 2,
+  "reviewWindowNs": "3600000000000",
+  "wasm": {
+    "file": "deployment/swarmguild.wasm",
+    "sha256": "cd073a39f844b69fec4d8c10baf17dd6f05e99bcfb3b6d2288c005cc0aa932a7",
+    "codeHash": "EoLyGBriXcuf66J9bjHgM1FjiFvdqBjw8E2hQC9XPYD4",
+    "bytes": 398918
+  },
+  "guildBalanceNear": "5",
+  "accounts": [
+    {
+      "id": "operator.swarmguild-99c7a546.testnet",
+      "role": "operator",
+      "publicKey": "ed25519:7nhndqwdUtKFTvEEntWaG1P2nT9N3UufWKiaHyc2MNsZ",
+      "balanceNear": "0.6",
+      "allowanceNear": "0.4",
+      "methods": [
+        "charge_inference",
+        "commit_bid",
+        "reveal_bid",
+        "submit_work",
+        "award",
+        "expire",
+        "withdraw_credit"
+      ]
+    },
+    {
+      "id": "auditor.swarmguild-99c7a546.testnet",
+      "role": "worker",
+      "publicKey": "ed25519:6w6mJrfmkEAcBtgYS5ARrGLf5kcPbRRAfSgiUjGt5ere",
+      "balanceNear": "0.25",
+      "allowanceNear": "0.2",
+      "methods": [
+        "commit_bid",
+        "reveal_bid",
+        "submit_work"
+      ]
+    },
+    {
+      "id": "summarizer.swarmguild-99c7a546.testnet",
+      "role": "worker",
+      "publicKey": "ed25519:DpYkDXuNSumtUCZZDxstui3ZvU5Wt6pWuyfxvVKWdU2T",
+      "balanceNear": "0.25",
+      "allowanceNear": "0.2",
+      "methods": [
+        "commit_bid",
+        "reveal_bid",
+        "submit_work"
+      ]
+    },
+    {
+      "id": "rev-integrity.swarmguild-99c7a546.testnet",
+      "role": "reviewer",
+      "publicKey": "ed25519:AJByuWKnjD1T9jtsxR6Hnu1FJ2Bx54WKWMTwsHQCNSAS",
+      "balanceNear": "0.25",
+      "allowanceNear": "0.2",
+      "methods": [
+        "review"
+      ]
+    },
+    {
+      "id": "rev-quality.swarmguild-99c7a546.testnet",
+      "role": "reviewer",
+      "publicKey": "ed25519:D158b5cJhjyiPWGpsTsVZED3uNAPWonVcUsVRZZ8apgF",
+      "balanceNear": "0.25",
+      "allowanceNear": "0.2",
+      "methods": [
+        "review"
+      ]
+    },
+    {
+      "id": "rev-safety.swarmguild-99c7a546.testnet",
+      "role": "reviewer",
+      "publicKey": "ed25519:BdTsEHEg3imnr8yRcoqizkZ1rUXsr2qwu8bfpvs6vLp",
+      "balanceNear": "0.25",
+      "allowanceNear": "0.2",
+      "methods": [
+        "review"
+      ]
+    }
+  ],
+  "agents": [
+    {
+      "id": "auditor.swarmguild-99c7a546.testnet",
+      "role": "worker",
+      "name": "Auditor",
+      "model": "z-ai/glm-5.3-flash",
+      "manifest": "agents/workers/auditor.json",
+      "specHash": "cf51f5c3d07627bea2b38e33e6175dc810bda335c83376da9cc934b12d0e0c53",
+      "specUrl": "https://raw.githubusercontent.com/0xNexuz/SwarmGuild/main/agents/workers/auditor.json",
+      "hosted": false,
+      "fundingNear": "0.3"
+    },
+    {
+      "id": "explainer.swarmguild-99c7a546.testnet",
+      "role": "worker",
+      "name": "Explainer",
+      "model": "z-ai/glm-5.3-flash",
+      "manifest": "agents/workers/explainer.json",
+      "specHash": "d93f13e4d3d95527f729a19ec20f6a557dcfa6e1cf105ddc77210057e46d6a99",
+      "specUrl": "https://raw.githubusercontent.com/0xNexuz/SwarmGuild/main/agents/workers/explainer.json",
+      "hosted": true,
+      "fundingNear": "0.3"
+    },
+    {
+      "id": "summarizer.swarmguild-99c7a546.testnet",
+      "role": "worker",
+      "name": "Summarizer",
+      "model": "z-ai/glm-5.3-flash",
+      "manifest": "agents/workers/summarizer.json",
+      "specHash": "f9f8925c517ed25d4605d94e848297516fe9b7c4de41122195582d03a6d18ddb",
+      "specUrl": "https://raw.githubusercontent.com/0xNexuz/SwarmGuild/main/agents/workers/summarizer.json",
+      "hosted": false,
+      "fundingNear": "0.3"
+    },
+    {
+      "id": "tamper-lab.swarmguild-99c7a546.testnet",
+      "role": "worker",
+      "name": "Tamper lab",
+      "model": "z-ai/glm-5.3-flash",
+      "manifest": "agents/workers/tamper-lab.json",
+      "specHash": "a3b206de5e298d489ac4c8ede737425982e668c5746ac355350202c5710287b7",
+      "specUrl": "https://raw.githubusercontent.com/0xNexuz/SwarmGuild/main/agents/workers/tamper-lab.json",
+      "hosted": true,
+      "fundingNear": "0.15"
+    },
+    {
+      "id": "rev-integrity.swarmguild-99c7a546.testnet",
+      "role": "reviewer",
+      "name": "Integrity reviewer",
+      "model": "z-ai/glm-5.3-flash",
+      "manifest": "agents/reviewers/integrity.json",
+      "specHash": "48f3c40243173b8f9a297d51161773f9b6a4558fc15598fbab0810de7a0d8a11",
+      "specUrl": "https://raw.githubusercontent.com/0xNexuz/SwarmGuild/main/agents/reviewers/integrity.json",
+      "hosted": false,
+      "fundingNear": "0.15"
+    },
+    {
+      "id": "rev-quality.swarmguild-99c7a546.testnet",
+      "role": "reviewer",
+      "name": "Quality reviewer",
+      "model": "z-ai/glm-5.3-flash",
+      "manifest": "agents/reviewers/quality.json",
+      "specHash": "60dc3e26c1be4cf97cfeaaceaf6fa746f00045c5435c9aa542c6a3eb0fb94fbd",
+      "specUrl": "https://raw.githubusercontent.com/0xNexuz/SwarmGuild/main/agents/reviewers/quality.json",
+      "hosted": false,
+      "fundingNear": "0.15"
+    },
+    {
+      "id": "rev-safety.swarmguild-99c7a546.testnet",
+      "role": "reviewer",
+      "name": "Safety reviewer",
+      "model": "z-ai/glm-5.3-flash",
+      "manifest": "agents/reviewers/safety.json",
+      "specHash": "fa0ce5cd71f40b374d67046381b47f458664e58dc524f6fdb941c8ef7aed4cbd",
+      "specUrl": "https://raw.githubusercontent.com/0xNexuz/SwarmGuild/main/agents/reviewers/safety.json",
+      "hosted": false,
+      "fundingNear": "0.15"
+    }
+  ],
+  "transactions": [
+    {
+      "stage": "deploy",
+      "step": "deploy",
+      "txHash": "E6N1yx5xNALLJgw7qASuxzR7oHYbugbK5G8ozTtjnM2d"
+    },
+    {
+      "stage": "accounts",
+      "step": "create operator.swarmguild-99c7a546.testnet",
+      "txHash": "Hh9j9qGxsyHeHFZA6CEp4s4sTvGbsRXvMgjQ2BgekhcH"
+    },
+    {
+      "stage": "accounts",
+      "step": "create auditor.swarmguild-99c7a546.testnet",
+      "txHash": "CM8mp1kTyGSotFUXMT36u9d8kqPCBpXPqTS1u2839GMm"
+    },
+    {
+      "stage": "accounts",
+      "step": "create summarizer.swarmguild-99c7a546.testnet",
+      "txHash": "2jAuiBc22WBykBGmSrDfhwS5dKGCFEKggPNK8Rjp1m2m"
+    },
+    {
+      "stage": "accounts",
+      "step": "create rev-integrity.swarmguild-99c7a546.testnet",
+      "txHash": "FayGyZhq99MGvFRsAHWsaMdedr2RrVLx6bgLeEBxJTFs"
+    },
+    {
+      "stage": "accounts",
+      "step": "create rev-quality.swarmguild-99c7a546.testnet",
+      "txHash": "59vB6guwWMRQyEjNcYH7smpUSMcddP6h6rwEAGDqTd8K"
+    },
+    {
+      "stage": "accounts",
+      "step": "create rev-safety.swarmguild-99c7a546.testnet",
+      "txHash": "GuUpGrgA8PsiTLfg2VDUAr79YK9KncLwkBZBHyNwCEZF"
+    },
+    {
+      "stage": "agents",
+      "step": "add_agent auditor.swarmguild-99c7a546.testnet",
+      "txHash": "4hZq1zVNgB7cCMPeJRVDoyu7XVXp5KyncC9sWSjVY5Cf"
+    },
+    {
+      "stage": "agents",
+      "step": "add_agent explainer.swarmguild-99c7a546.testnet",
+      "txHash": "EwMuoeEAC5FhrvJLHLweBZBheiyvJoTY6FZu2brSR7gW"
+    },
+    {
+      "stage": "agents",
+      "step": "add_agent summarizer.swarmguild-99c7a546.testnet",
+      "txHash": "CKg1YTuJbrX7CyCVybeoquVoHqN9PDtgPnkbTVptgNzJ"
+    },
+    {
+      "stage": "agents",
+      "step": "add_agent tamper-lab.swarmguild-99c7a546.testnet",
+      "txHash": "63b3a9nfZDhVsMG8jmfujnLxCdhuE4KtF69FeCfezqgf"
+    },
+    {
+      "stage": "agents",
+      "step": "add_agent rev-integrity.swarmguild-99c7a546.testnet",
+      "txHash": "63Mu2tp2ypVzGeFm6FMEhBA1iWaQCeHJsvg1cTJZ6mpF"
+    },
+    {
+      "stage": "agents",
+      "step": "add_agent rev-quality.swarmguild-99c7a546.testnet",
+      "txHash": "9L6afWfZ9iaoRDTuCBJp7BfwEHvoSP3hRvjJwPZ5nHc2"
+    },
+    {
+      "stage": "agents",
+      "step": "add_agent rev-safety.swarmguild-99c7a546.testnet",
+      "txHash": "Bw6YyVSVBu8BVQ3Byv2Sk4cbb756f3qCsxCsyytiuvMK"
+    }
+  ]
+}
