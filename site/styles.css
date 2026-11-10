@@ -228,3 +228,17 @@ pre.code{border-color:var(--ink);max-height:none;align-self:start}
 .steps{margin:0;padding-left:20px;display:grid;gap:10px;max-width:62ch}.steps code{font:500 .8rem var(--mono);background:var(--paper-2);padding:1px 5px}
 @media (max-width:1000px){.live-band{grid-template-columns:1fr}}
 @media (max-width:1000px){tr.detail td>*{position:sticky;left:0;max-width:calc(100vw - 2*clamp(16px,3vw,40px) - 70px)}}
+/* real actions */
+.stack{display:grid;gap:clamp(16px,2vw,24px);align-content:start}
+.form.flow{position:static}
+.out{border:1px solid var(--ink);padding:14px;display:grid;gap:10px;background:#fbfaf6;animation:rise .3s var(--ease);font-size:.9rem}
+.out .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.out .bad,.wallet-note[data-ok=false]{color:var(--warn)}
+pre.code.cmd{font-size:.66rem;max-height:150px;border-color:var(--rule);user-select:all}
+.credit{font-size:.84rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-top:1px dotted var(--rule);padding-top:12px}
+.wallet-note{margin:0;padding:14px clamp(16px,3vw,40px);border-bottom:1px solid var(--ink);background:#fff;font:500 .8rem var(--mono)}
+.wallet-note[data-ok=true]{box-shadow:inset 4px 0 0 var(--signal)}
+.track .live{width:10px;min-width:0;height:10px;border-radius:50%;border-color:var(--rule)}
+[hidden]{display:none!important}
+.form{grid-template-columns:minmax(0,1fr)}
+.out{min-width:0}.out p{overflow-wrap:anywhere}

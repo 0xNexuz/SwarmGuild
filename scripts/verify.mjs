@@ -28,7 +28,8 @@ main(async () => {
   for (const file of files) results.push(...await verifyJob(JSON.parse(fs.readFileSync(path.join(jobsDir, file), 'utf8')), chain, { guild: plan.guild }));
   for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} [${r.job}] ${r.check}${r.ok ? '' : ` (${r.detail})`}`);
   const failed = results.filter(r => !r.ok).length;
-  console.log(JSON.stringify({ guild: plan.guild, jobs: files.length, checks: results.length, failed }));
+  const allowance = (await chain.keys(plan.operator))[0]?.permission?.FunctionCall?.allowance;
+  console.log(JSON.stringify({ guild: plan.guild, jobs: files.length, checks: results.length, failed, operatorGasAllowanceLeftYocto: allowance ?? null }));
   if (failed || flags.json) fs.writeFileSync(path.join(EVIDENCE_DIR, 'verification.json'), JSON.stringify({ checkedAt: new Date().toISOString(), results }, null, 2) + '\n');
   if (failed) process.exitCode = 1;
 });

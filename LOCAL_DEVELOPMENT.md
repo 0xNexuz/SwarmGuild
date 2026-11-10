@@ -4,7 +4,7 @@ Setup notes. [README.md](README.md) has the overview and the checks.
 
 ## The site
 
-No build step. Serve `site/` with any static server:
+No build step. Serve `site/` with any static server. The Swarm and Live pages read NEAR Testnet from the browser; `node scripts/check-site.mjs <url>` checks a deployed copy against the chain (it needs Playwright).
 
 ```sh
 python3 -m http.server 4400 --directory site
@@ -33,8 +33,19 @@ node scripts/setup.mjs run accounts --approve-testnet-spend --keys-dir <folder>
 node scripts/setup.mjs run agents --approve-testnet-spend --keys-dir <folder>
 node scripts/setup.mjs check                                                  # read-only
 node scripts/run.mjs --scenario summary --approve-testnet-run --keys-dir <folder>
+node scripts/run.mjs --post "<job text>" --bounty 0.2 --post-only --approve-testnet-run   # post it and let the always-on runner serve it
+node scripts/setup.mjs withdraw-credit --approve-testnet-spend --keys-dir <folder>         # the owner takes its refunds out of the contract
 node scripts/verify.mjs                                                       # read-only, needs no keys
 ```
+
+## The always-on runner
+
+`.github/workflows/runner.yml` runs `scripts/run.mjs --watch --publish` on a schedule. It needs two repository secrets and does nothing without them:
+
+- `SWARMGUILD_RUNNER_KEYS`: the contents of the file written by `node scripts/runner-keys.mjs export --keys-dir <folder> --out <file outside the repository>`. It bundles the six function-call keys (operator, two agents, three reviewers) and never the owner's key.
+- `NEAR_AI_KEY`: the NEAR AI Cloud key.
+
+The runner refuses to start if any key it was given is a full-access key. Do not run a second runner by hand while the workflow is serving: both would work on the same jobs.
 
 - The keys folder must be outside the repository. It holds one `<account>.json` per account (`account_id`, `public_key`, `private_key`). `create-owner` writes the owner's key there and `plan` writes the sub-accounts' keys.
 - Each stage checks the chain first and skips what is already done, so a stage can be run again safely.

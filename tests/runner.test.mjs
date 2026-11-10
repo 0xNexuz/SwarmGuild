@@ -185,3 +185,31 @@ test('a worker whose model returns nothing does not submit empty work', async ()
   assert.equal((await runner.runJob(jobId)).status, 'Expired');
   assert.equal(chain.state.txs.filter(t => t.method === 'submit_work').length, 0);
 });
+
+test('the always-on loop works on every open job in turn, publishes each as it settles, and stops at its limits', async () => {
+  const { chain, runner, logs } = await swarm({ extraSigners: ['alice.test'] });
+  const a = await runner.postJob('alice.test', 'Give a summary of NEAR access keys.', N('0.2'));
+  const b = await runner.postJob(owner, 'Write a haiku about sealed bids.', N('0.2'));
+  const c = await runner.postJob(owner, 'Give a summary of sub-accounts.', N('0.2'));
+  const published = [];
+  const served = await runner.watch({ minutes: 1, maxJobs: 2, onSettled: async (id, status) => published.push([id, status]) });
+  // Both jobs were posted before either was served, and both still got their sealed bids in before the deadline.
+  assert.deepEqual([...served].sort((x, y) => x.jobId - y.jobId), [{ jobId: a, status: 'Paid' }, { jobId: b, status: 'Rejected' }]);
+  assert.deepEqual([...published].sort(), [[a, 'Paid'], [b, 'Rejected']]);
+  assert.equal(chain.state.jobs[c].status, 'Open', 'the job past the limit is left for the next run');
+  assert.equal(chain.state.jobs[c].bidders.length, 0);
+  const none = await runner.watch({ minutes: 1, maxJobs: 5, canServe: async () => false });
+  assert.deepEqual(none, [], 'a runner that cannot serve starts nothing');
+  // The next run finds the job nobody bid on, closes it and refunds it.
+  chain.advance(400);
+  assert.deepEqual(await runner.watch({ minutes: 1, maxJobs: 1 }), [{ jobId: c, status: 'Cancelled' }]);
+});
+
+test('an undecided job does not hold the always-on loop: it is parked, then expired once its deadline passes', async () => {
+  const { chain, runner } = await swarm({ cloud: fakeCloud(answers({ verdict: 'I cannot decide.' })) });
+  const jobId = await runner.postJob(owner, 'Give a summary of NEAR access keys.', N('0.3'));
+  assert.deepEqual(await runner.watch({ minutes: 1, maxJobs: 1 }), [], 'the loop returns without waiting an hour');
+  assert.equal(chain.state.jobs[jobId].status, 'Submitted');
+  chain.advance(3700);
+  assert.deepEqual(await runner.watch({ minutes: 1, maxJobs: 1 }), [{ jobId, status: 'Expired' }]);
+});

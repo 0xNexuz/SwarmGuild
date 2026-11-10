@@ -1,11 +1,17 @@
-// The Testnet view. Everything it shows is read in the visitor's browser from public NEAR RPC and from the
-// evidence files the on-chain result URLs point to. Nothing here comes from the simulation.
+// Everything real on the site. It is read in the visitor's browser from public NEAR RPC and from the evidence
+// files the on-chain result URLs point to. Posting a job or adding an agent prepares an unsigned transaction
+// for the visitor's own wallet; the site holds no key. Nothing here comes from the simulation.
+import { manifestProblems, MAX_MANIFEST_BYTES } from './manifest-rules.mjs';
+import { addAgentCall, agentIdFor, cliCommand, encodeFunctionCallTx, isAccountId, nearToYocto, postJobCall, TGAS, walletSignUrl, withdrawCreditCall } from './tx.mjs';
+
 export const GUILD = 'guild.swarmguild-99c7a546.testnet';
 export const OWNER = GUILD.slice('guild.'.length);
 const RPCS = ['https://rpc.testnet.fastnear.com', 'https://rpc.testnet.near.org'];
 const RAW = 'https://raw.githubusercontent.com/0xNexuz/SwarmGuild/main';
 const EXPLORER = 'https://testnet.nearblocks.io';
 const REPO = 'https://github.com/0xNexuz/SwarmGuild';
+const WALLET = 'https://testnet.mynearwallet.com/';
+const RUNNER_RUNS = 'https://api.github.com/repos/0xNexuz/SwarmGuild/actions/workflows/runner.yml/runs?per_page=1';
 const BOND = 10n ** 22n;
 const SETTLED = ['Paid', 'Rejected', 'Cancelled', 'Expired'];
 
@@ -20,22 +26,34 @@ async function sha256(text) {
   return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function rpc(params) {
+async function rpcCall(method, params) {
   let last;
   for (const url of RPCS) {
     try {
-      const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 'swarmguild-site', method: 'query', params: { finality: 'final', ...params } }) });
+      const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 'swarmguild-site', method, params }) });
       const payload = await response.json();
       if (payload.result && !payload.result.error) return payload.result;
       last = new Error(payload.error?.cause?.name ?? payload.result?.error ?? 'RPC error');
-    } catch (error) { last = error; }
+      if (payload.error?.cause?.name === 'UNKNOWN_ACCOUNT') throw last; // a real answer, not a node problem
+    } catch (error) { last = error; if (error.message === 'UNKNOWN_ACCOUNT') throw error; }
   }
   throw last;
 }
+const rpc = params => rpcCall('query', { finality: 'final', ...params });
 async function view(method, args = {}) {
-  const result = await rpc({ request_type: 'call_function', account_id: GUILD, method_name: method, args_base64: btoa(JSON.stringify(args)) });
+  const bytes = new TextEncoder().encode(JSON.stringify(args));
+  const result = await rpc({ request_type: 'call_function', account_id: GUILD, method_name: method, args_base64: btoa(String.fromCharCode(...bytes)) });
   return JSON.parse(new TextDecoder().decode(new Uint8Array(result.result)));
+}
+
+/** An unsigned transaction for `call`, ready for the visitor's wallet, plus the same call as a near-cli command. */
+export async function prepare(call) {
+  const [keys, block] = await Promise.all([rpc({ request_type: 'view_access_key_list', account_id: call.signerId }), rpcCall('block', { finality: 'final' })]);
+  const full = keys.keys.find(k => k.access_key.permission === 'FullAccess');
+  if (!full) throw new Error(`${call.signerId} has no full-access key, so it cannot attach a deposit.`);
+  const bytes = encodeFunctionCallTx({ signerId: call.signerId, publicKey: full.public_key, nonce: BigInt(full.access_key.nonce) + 1n, receiverId: call.receiverId,
+    blockHash: block.header.hash, method: call.method, args: call.args, gas: BigInt(call.gasTgas) * TGAS, deposit: nearToYocto(call.depositNear) });
+  return { walletUrl: walletSignUrl(WALLET, bytes, `${location.origin}${location.pathname}#live`), command: cliCommand(call) };
 }
 
 /** One read of the whole contract: about ten RPC calls. */
@@ -111,7 +129,7 @@ function detailHtml(chain, job, d) {
 }
 
 export function mountLive($) {
-  let chain = null, error = null, open = null, timer = null, loading = false;
+  let chain = null, error = null, open = null, loading = false;
   const details = new Map(); const listeners = new Set();
 
   function render() {
@@ -124,7 +142,7 @@ export function mountLive($) {
     band.querySelector('.live-line').innerHTML = `<b>${st.jobs}</b> jobs posted · <b>${st.paid}</b> paid after review · <b>${st.rejected}</b> rejected · <b>${st.expired}</b> expired undecided · <b>${st.agents}</b> agents, ${st.hosted} hosted · read from ${esc(GUILD)} just now`;
     facts.innerHTML = [['Contract account', link(`${EXPLORER}/address/${GUILD}`, GUILD)], ['Access keys on it', `${chain.keyCount}${chain.keyCount === 0 ? ' — nobody can change its code or move its funds by key' : ''}`],
       ['Code hash', esc(chain.codeHash)], ['Review panel', `${chain.config.reviewers.length} reviewer agents, ${chain.config.review_threshold} must agree`],
-      ['Operator', esc(chain.config.operator)], ['Read at', esc(chain.readAt.toLocaleTimeString())]].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+      ['Operator', esc(chain.config.operator)], ['Runner', '<span id="runner-state"></span>'], ['Read at', esc(chain.readAt.toLocaleTimeString())]].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
     rows.innerHTML = [...chain.jobs].reverse().map(job => {
       const row = `<tr class="row" data-job="${job.id}" tabindex="0" aria-expanded="${open === job.id}"><td class="num">#${job.id}</td><td>${esc(job.description.length > 150 ? `${job.description.slice(0, 150)}…` : job.description)}<br><span class="muted">${esc(job.poster)}</span></td>
         <td class="num">${near(job.bounty)}</td><td class="num">${job.bidders.length}</td>
@@ -140,6 +158,108 @@ export function mountLive($) {
       <p class="facts">earned ${near(a.earned, 5)} · inference ${near(a.inference_spent, 5)}<br>${esc(short(id))} · ${link(a.spec_url, 'manifest')} ${esc(a.spec_hash.slice(0, 10))}…</p></li>`).join('');
     for (const fn of listeners) fn(chain);
   }
+
+  const PHASE_AT = { 'sealing bids': 0, 'revealing bids': 1, 'awaiting award': 2, 'agent working': 3, 'in review': 4 };
+  function renderLanding() {
+    const flight = $('real-flight'), feed = $('real-feed'), track = $('track');
+    const newest = [...chain.jobs].reverse();
+    flight.innerHTML = newest.slice(0, 5).map(job => { const p = phase(job), at = PHASE_AT[p] ?? 5;
+      return `<li><span class="id">#${job.id}</span><span class="desc">${esc(job.description)}</span><span class="bounty">${near(job.bounty)} NEAR</span>
+        <span class="phases">${[0, 1, 2, 3, 4].map(i => `<i data-on="${i < at}" data-now="${i === at}"></i>`).join('')}</span>
+        <span class="phase-name">${esc(p)}${job.winner ? ` · ${esc(agentName(chain, job.winner))} at ${near(job.price)} NEAR` : job.bidders.length ? ` · ${job.bidders.length} sealed bids` : ''}</span></li>`; }).join('')
+      || '<li><span class="id">—</span><span class="desc">No job has been posted yet.</span></li>';
+    feed.innerHTML = newest.slice(0, 8).map(job => {
+      const who = job.winner ? esc(agentName(chain, job.winner)) : '', bounty = BigInt(job.bounty), price = BigInt(job.price ?? 0);
+      const line = job.status === 'Paid' ? `Paid after review. ${who} earned ${near(price - price / 10n)} NEAR and ${near(bounty - price)} went back to the poster.`
+        : job.status === 'Rejected' ? `Rejected by the reviewers. The ${near(bounty)} NEAR bounty went back and ${who}'s bond was slashed.`
+        : job.status === 'Expired' ? (job.work ? `Expired undecided. The bounty went back and ${who} kept its bond.` : `Expired: ${who} delivered nothing in time and lost its bond.`)
+        : job.status === 'Cancelled' ? 'No agent bid. The bounty went back.' : `In progress: ${esc(phase(job))}.`;
+      return `<li data-type="${job.status === 'Paid' ? 'job_paid' : job.status === 'Rejected' ? 'job_rejected' : ''}"><time>#${job.id}</time><span>${line}</span></li>`; }).join('');
+    const busy = new Set(chain.jobs.map(j => PHASE_AT[phase(j)]).filter(n => n !== undefined));
+    [...track.children].forEach((li, i) => { li.dataset.busy = i > 0 && busy.has(i - 1); });
+  }
+  listeners.add(renderLanding);
+
+  /* ---------- the visitor's own account, credit and transactions ---------- */
+  const accountInputs = [...document.querySelectorAll('[data-account]')];
+  const account = () => accountInputs[0].value.trim().toLowerCase();
+  const remember = value => { for (const input of accountInputs) if (input.value !== value) input.value = value; try { localStorage.setItem('swarmguild.account', value); } catch { /* private mode */ } };
+  try { remember(localStorage.getItem('swarmguild.account') ?? ''); } catch { /* private mode */ }
+  async function showCredit() {
+    const box = $('credit'); const id = account();
+    if (!isAccountId(id)) { box.hidden = true; return; }
+    try {
+      const credit = BigInt(await view('get_credit', { account: id }));
+      box.hidden = credit === 0n;
+      box.querySelector('b').textContent = `${near(credit, 5)} NEAR`;
+    } catch { box.hidden = true; }
+  }
+  for (const input of accountInputs) input.addEventListener('change', () => { remember(input.value.trim().toLowerCase()); showCredit(); });
+
+  /** Shows a prepared transaction: a link to sign it in the wallet, and the same call as a terminal command. */
+  async function offer(out, call, summary) {
+    out.hidden = false; out.innerHTML = '<p class="muted">Preparing the transaction…</p>';
+    try {
+      const { walletUrl, command } = await prepare(call);
+      out.innerHTML = `<p>${summary}</p><p class="actions"><a class="btn" href="${esc(walletUrl)}">Sign in MyNearWallet</a><button class="btn ghost small" type="button" data-copy>Copy near-cli command</button></p><pre class="code cmd"></pre>
+        <p class="muted">The wallet shows the call and the deposit before you approve. This site never sees your key.</p>`;
+      out.querySelector('pre').textContent = command;
+      out.querySelector('[data-copy]').addEventListener('click', async e => { try { await navigator.clipboard.writeText(command); e.target.textContent = 'Copied'; } catch { e.target.textContent = 'Select the text below'; } });
+    } catch (e) {
+      out.innerHTML = `<p class="bad">${e.message === 'UNKNOWN_ACCOUNT' ? `${esc(call.signerId)} does not exist on NEAR Testnet.` : `Could not prepare the transaction: ${esc(e.message)}`}</p>`;
+    }
+  }
+  const needAccount = out => { const id = account(); if (isAccountId(id) && id.endsWith('.testnet')) return id; out.hidden = false; out.innerHTML = '<p class="bad">Enter your NEAR Testnet account, for example you.testnet.</p>'; return null; };
+
+  $('post-form').addEventListener('submit', e => {
+    e.preventDefault(); const out = $('post-out'); const data = new FormData(e.target); const id = needAccount(out); if (!id) return;
+    const description = String(data.get('description')).trim(); const bounty = String(data.get('bounty')).trim();
+    if (!description || description.length > 2000 || !(Number(bounty) >= 0.05)) { out.hidden = false; out.innerHTML = '<p class="bad">Describe the job in up to 2,000 characters and offer at least 0.05 NEAR.</p>'; return; }
+    const matched = chain ? chain.agents.filter(([aid, a]) => !chain.config.reviewers.includes(aid)).length : 0;
+    offer(out, postJobCall(GUILD, id, description, bounty), `This posts your job with <b>${esc(bounty)} NEAR</b> held by the contract. ${matched} agents will see it. Bids seal for two minutes, then the work and the review take about two more.`);
+  });
+  $('credit').querySelector('button').addEventListener('click', () => { const out = $('post-out'); const id = needAccount(out); if (id) offer(out, withdrawCreditCall(GUILD, id), 'This moves your credit from the contract to your account.'); });
+
+  $('agent-form').addEventListener('submit', async e => {
+    e.preventDefault(); const out = $('agent-out'); const data = new FormData(e.target); const id = needAccount(out); if (!id) return;
+    const url = String(data.get('url')).trim(); const funding = String(data.get('funding')).trim();
+    out.hidden = false; out.innerHTML = '<p class="muted">Fetching and checking the manifest…</p>';
+    try {
+      if (!/^https:\/\//.test(url)) throw new Error('The manifest URL must start with https://');
+      if (!(Number(funding) >= 0.1)) throw new Error('Fund the agent with at least 0.1 NEAR.');
+      const response = await fetch(url); if (!response.ok) throw new Error(`The URL returned HTTP ${response.status}.`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.length > MAX_MANIFEST_BYTES) throw new Error('The manifest is over 20,000 bytes.');
+      let manifest; try { manifest = JSON.parse(new TextDecoder().decode(bytes)); } catch { throw new Error('The file at that URL is not valid JSON.'); }
+      const problems = manifestProblems(manifest); if (problems.length) throw new Error(`The manifest needs fixing: ${problems.join(' ')}`);
+      const specHash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(b => b.toString(16).padStart(2, '0')).join('');
+      const agent = agentIdFor(manifest.name, id);
+      if (await view('get_agent', { agent })) throw new Error(`${agent} is already in the swarm. Change the manifest's name to add another.`);
+      await offer(out, addAgentCall(GUILD, id, { agent, name: manifest.name, model: manifest.model, specHash, specUrl: url }, funding),
+        `The manifest is valid. <b>${esc(manifest.name)}</b> will join as <b>${esc(agent)}</b> with ${esc(funding)} NEAR, and bid ${esc(manifest.pricing.floorNear)} NEAR on jobs that mention: ${esc(manifest.skills.join(', '))}.<br><span class="muted">Manifest SHA-256 ${esc(specHash)}</span>`);
+    } catch (error) { out.innerHTML = `<p class="bad">${esc(error instanceof TypeError ? 'The browser could not fetch that URL. Use a host that allows cross-origin reads, such as a GitHub gist raw link.' : error.message)}</p>`; }
+  });
+
+  // Back from the wallet: it appends the transaction hash, or an error, to the callback URL.
+  (() => {
+    const q = new URLSearchParams(location.search); const hashes = q.get('transactionHashes'); const failed = q.get('errorCode');
+    if (!hashes && !failed) return;
+    const note = $('wallet-note'); note.hidden = false;
+    note.innerHTML = hashes ? `Your transaction was sent: ${hashes.split(',').map(h => txLink(h)).join(', ')}. It appears below within a few seconds.` : `The wallet did not send the transaction (${esc(failed)}).`;
+    note.dataset.ok = Boolean(hashes);
+    history.replaceState(null, '', `${location.pathname}#live`);
+  })();
+
+  /* ---------- is the runner serving jobs right now? ---------- */
+  let runner = 'checking…';
+  async function checkRunner() {
+    try {
+      const run = (await (await fetch(RUNNER_RUNS)).json()).workflow_runs?.[0];
+      runner = !run ? 'not started yet' : run.status === 'in_progress' ? 'online: serving jobs now' : run.status === 'queued' ? 'starting' : `offline since ${new Date(run.updated_at).toLocaleString()}`;
+    } catch { runner = 'status unknown'; }
+    const cell = $('runner-state'); if (cell) cell.textContent = runner;
+  }
+  listeners.add(() => { const cell = $('runner-state'); if (cell) cell.textContent = runner; });
 
   async function refresh() {
     if (loading) return; loading = true;
@@ -163,7 +283,15 @@ export function mountLive($) {
     get chain() { return chain; },
     onChange: fn => listeners.add(fn),
     refresh,
-    /** Reads now, then every 30 seconds while `visible()` is true, so a job in progress moves on screen. */
-    start(visible) { refresh(); clearInterval(timer); timer = setInterval(() => { if (!document.hidden && visible()) refresh(); }, 30000); },
+    /** Reads now, then every 30 seconds, or every 6 while a job is in progress, so it moves on screen. */
+    start(visible) {
+      refresh(); showCredit(); checkRunner(); setInterval(checkRunner, 120000);
+      let last = Date.now();
+      setInterval(() => {
+        if (document.hidden || !visible()) return;
+        const moving = chain?.jobs.some(j => !SETTLED.includes(j.status));
+        if (Date.now() - last >= (moving ? 6000 : 30000)) { last = Date.now(); refresh(); showCredit(); }
+      }, 2000);
+    },
   };
 }

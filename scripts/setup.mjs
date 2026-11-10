@@ -2,6 +2,7 @@
 //   node scripts/setup.mjs plan --owner <account> --keys-dir <folder>     writes deployment/testnet.json, sends nothing
 //   node scripts/setup.mjs run deploy|accounts|agents --approve-testnet-spend --keys-dir <folder>
 //   node scripts/setup.mjs check                                          read-only comparison of chain and plan
+//   node scripts/setup.mjs withdraw-credit --approve-testnet-spend --keys-dir <folder>   owner takes its refunds out of the contract
 import fs from 'node:fs';
 import { ensureKey } from '../lib/chain.mjs';
 import { buildPlan, checkDeployment, planCostYocto, runStage, STAGES } from '../lib/setup.mjs';
@@ -34,7 +35,16 @@ main(async () => {
     if (results.some(r => !r.ok)) process.exitCode = 1;
     return;
   }
-  if (command !== 'run' || !STAGES.includes(stage)) throw new Error(`Usage: setup.mjs plan | check | run <${STAGES.join('|')}> --approve-testnet-spend`);
+  if (command === 'withdraw-credit') { // refunds and unspent bounties sit in the contract as the owner's credit until withdrawn
+    if (flags['approve-testnet-spend'] !== true) throw new Error('This sends a Testnet transaction. Add --approve-testnet-spend once the owner has approved it.');
+    const chain = await testnet(flags);
+    const credit = BigInt(await chain.view(plan.guild, 'get_credit', { account: plan.owner }));
+    if (credit === 0n) { console.log(JSON.stringify({ credit: '0', sent: 0 })); return; }
+    const r = await chain.call(plan.owner, plan.guild, 'withdraw_credit', {}, { gasTgas: 50 });
+    console.log(JSON.stringify({ withdrewNear: yoctoToNear(credit), txHash: r.txHash, ownerBalanceNear: yoctoToNear((await chain.account(plan.owner)).balanceYocto) }));
+    return;
+  }
+  if (command !== 'run' || !STAGES.includes(stage)) throw new Error(`Usage: setup.mjs plan | check | withdraw-credit | run <${STAGES.join('|')}> --approve-testnet-spend`);
   if (flags['approve-testnet-spend'] !== true) throw new Error('This sends Testnet transactions. Add --approve-testnet-spend once the owner has approved it.');
   const chain = await testnet(flags);
   const ownerKeys = await chain.keys(plan.owner);

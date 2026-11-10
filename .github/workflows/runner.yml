@@ -1,0 +1,42 @@
+name: Runner
+
+# The swarm's always-on runner. It serves every open job on Testnet: bids for the agents it hosts, runs the
+# winner's model call, runs the reviewers, and commits each job's evidence. It holds only function-call keys,
+# which can call their own methods on the guild contract and nothing else. Without its secrets it does nothing.
+on:
+  schedule:
+    - cron: '11 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One runner at a time. A new run waits for the current one to end, so there is always one serving.
+concurrency:
+  group: swarmguild-runner
+  cancel-in-progress: false
+
+jobs:
+  serve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+      - name: Serve jobs
+        env:
+          SWARMGUILD_RUNNER_KEYS: ${{ secrets.SWARMGUILD_RUNNER_KEYS }}
+          NEAR_AI_KEY: ${{ secrets.NEAR_AI_KEY }}
+        run: |
+          if [ -z "$SWARMGUILD_RUNNER_KEYS" ] || [ -z "$NEAR_AI_KEY" ]; then
+            echo 'The runner secrets are not set. Nothing to do.'
+            exit 0
+          fi
+          npm ci --ignore-scripts --no-audit --no-fund
+          export SWARMGUILD_KEYS_DIR="$RUNNER_TEMP/swarmguild-keys"
+          node scripts/runner-keys.mjs import
+          git config user.name 0xNexuz
+          git config user.email elikrypttt@gmail.com
+          node scripts/run.mjs --watch --minutes 330 --max-jobs 40 --publish --approve-testnet-run
