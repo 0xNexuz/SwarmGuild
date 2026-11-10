@@ -180,27 +180,51 @@ export function mountLive($) {
   /* ---------- the visitor's own wallet, account, credit and transactions ---------- */
   // NEAR Connect shows the wallets that work on Testnet (Meteor, Intear, Ledger and others) and runs each in its own sandbox.
   const connector = new NearConnector({ network: 'testnet', features: { testnet: true, signAndSendTransaction: true }, footerBranding: null });
-  let walletAccount = null;
+  let walletAccount = null, walletRef = null, walletBusy = '';
   const accountInputs = [...document.querySelectorAll('[data-account]')];
   const account = () => accountInputs[0].value.trim().toLowerCase();
   const remember = value => { for (const input of accountInputs) if (input.value !== value) input.value = value; try { localStorage.setItem('swarmguild.account', value); } catch { /* private mode */ } };
   try { remember(localStorage.getItem('swarmguild.account') ?? ''); } catch { /* private mode */ }
   function showWallet() {
-    for (const el of document.querySelectorAll('[data-wallet-state]')) el.textContent = walletAccount ? `Connected: ${walletAccount}` : 'No wallet connected';
-    for (const el of document.querySelectorAll('[data-connect]')) el.textContent = walletAccount ? 'Disconnect' : 'Connect wallet';
+    for (const el of document.querySelectorAll('[data-wallet-state]')) el.textContent = walletBusy || (walletAccount ? `Connected: ${walletAccount}` : 'No wallet connected');
+    for (const el of document.querySelectorAll('[data-connect]')) { el.textContent = walletAccount ? 'Disconnect' : 'Connect wallet'; el.disabled = Boolean(walletBusy); }
     for (const input of accountInputs) input.readOnly = Boolean(walletAccount);
   }
-  function setWallet(id) { walletAccount = id || null; if (walletAccount) remember(walletAccount); showWallet(); showCredit(); }
-  connector.on('wallet:signIn', t => setWallet(t.accounts?.[0]?.accountId));
+  const busy = text => { walletBusy = text; showWallet(); };
+  function setWallet(id, wallet) { walletAccount = id || null; walletRef = walletAccount ? wallet ?? walletRef : null; if (walletAccount) remember(walletAccount); showWallet(); showCredit(); }
+  connector.on('wallet:signIn', t => setWallet(t.accounts?.[0]?.accountId, t.wallet));
   connector.on('wallet:signOut', () => setWallet(null));
-  connector.getConnectedWallet().then(({ accounts }) => setWallet(accounts?.[0]?.accountId)).catch(() => showWallet());
+  connector.getConnectedWallet().then(({ wallet, accounts }) => setWallet(accounts?.[0]?.accountId, wallet)).catch(() => showWallet());
+
+  // A wallet's code is fetched the first time it is picked (Meteor's is about 0.7 MB), which made the first connect slow.
+  // Fetch it ahead, once, when the forms come into view; NEAR Connect keeps it in the browser after that.
+  const warming = {};
+  const warm = id => (warming[id] ??= (async () => {
+    try {
+      await connector.whenManifestLoaded;
+      const wallet = connector.wallets.find(w => w.manifest.id === id);
+      if (!wallet?.executor?.loadCode || navigator.connection?.saveData) return;
+      if (!await connector.db.getItem(`${id}:${wallet.manifest.version}`).catch(() => null)) await wallet.executor.loadCode();
+    } catch { /* the wallet still loads when it is picked */ }
+  })());
+  if ('IntersectionObserver' in window) {
+    const seen = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) { seen.disconnect(); warm('meteor-wallet'); } });
+    seen.observe($('post-form'));
+  }
+
   async function connectWallet() {
-    const wallet = await connector.connect();
-    const id = (await wallet.getAccounts())[0]?.accountId;
-    setWallet(id); return id;
+    try {
+      busy('Choose a wallet…');
+      const walletId = await connector.selectWallet();
+      busy(`Opening ${connector.wallets.find(w => w.manifest.id === walletId)?.manifest.name ?? 'your wallet'}…`);
+      await warming[walletId]; // a fetch already under way: use it instead of starting a second one
+      const wallet = await connector.connect({ walletId }); // signs in and emits wallet:signIn, which records the account
+      if (!walletAccount) setWallet((await wallet.getAccounts())[0]?.accountId, wallet);
+      return walletAccount;
+    } finally { busy(''); }
   }
   for (const el of document.querySelectorAll('[data-connect]')) el.addEventListener('click', async () => {
-    try { if (walletAccount) await connector.disconnect(); else await connectWallet(); } catch { /* the visitor closed the picker */ }
+    try { if (!walletAccount) await connectWallet(); else { busy('Disconnecting…'); await connector.disconnect(walletRef ?? undefined); } } catch { /* the visitor closed the picker */ } finally { busy(''); }
   });
 
   async function showCredit() {
@@ -230,7 +254,7 @@ export function mountLive($) {
           if (!id) return;
           if (id !== call.signerId) { out.innerHTML = `<p>Your wallet is connected as <b>${esc(id)}</b>. Press the button above again to prepare the transaction for that account.</p>`; return; }
           button.disabled = true; button.textContent = 'Waiting for your wallet…';
-          const result = await (await connector.wallet()).signAndSendTransaction(walletTransaction(call));
+          const result = await (walletRef ?? await connector.wallet()).signAndSendTransaction(walletTransaction(call));
           const hash = result?.transaction?.hash ?? result?.transaction_outcome?.id;
           out.innerHTML = `<p class="ok">Sent${hash ? `: ${txLink(hash)}` : ''}. It shows up on this page within a few seconds.</p>`;
           refresh(); showCredit();
