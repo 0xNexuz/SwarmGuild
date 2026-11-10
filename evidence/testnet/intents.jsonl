@@ -65,3 +65,4 @@
 {"at":"2026-11-10T10:10:07.204Z","txHash":"9koEbJ4PTa3dZAws7fEcuH7EdZKgmxGUour7L2qL81qZ","signerId":"operator.swarmguild-99c7a546.testnet","receiverId":"guild.swarmguild-99c7a546.testnet","label":"charge_inference"}
 {"at":"2026-11-10T10:10:12.821Z","txHash":"Hr1FJr8aT3JoMVFk6XRXn6uSTjsro6s5bSyL8iKedj4n","signerId":"rev-integrity.swarmguild-99c7a546.testnet","receiverId":"guild.swarmguild-99c7a546.testnet","label":"review"}
 {"at":"2026-11-10T10:10:17.232Z","txHash":"ySyideSLhmXLbuN6PXbsUWpeQUYnuywAPKvrGgbJZAt","signerId":"rev-quality.swarmguild-99c7a546.testnet","receiverId":"guild.swarmguild-99c7a546.testnet","label":"review"}
+{"at":"2026-11-10T12:26:44.869Z","txHash":"6E5s8znMs9zp7RFnA7c3rsfYgbZoFf5bTptryrp4PXPj","signerId":"operator.swarmguild-99c7a546.testnet","receiverId":"guild.swarmguild-99c7a546.testnet","label":"award"}

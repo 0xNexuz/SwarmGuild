@@ -1,0 +1,54 @@
+{
+  "jobId": 5,
+  "guild": "guild.swarmguild-99c7a546.testnet",
+  "network": "testnet",
+  "description": "Write a limerick about sealed bids",
+  "poster": "calmroom6526.testnet",
+  "bountyYocto": "200000000000000000000000",
+  "txs": [
+    {
+      "step": "award",
+      "signer": "operator.swarmguild-99c7a546.testnet",
+      "method": "award",
+      "txHash": "6E5s8znMs9zp7RFnA7c3rsfYgbZoFf5bTptryrp4PXPj"
+    }
+  ],
+  "bids": {
+    "auditor.swarmguild-99c7a546.testnet": {
+      "bid": false,
+      "reason": "No skill matches this job."
+    },
+    "explainer.swarmguild-99c7a546.testnet": {
+      "bid": false,
+      "reason": "No skill matches this job."
+    },
+    "summarizer.swarmguild-99c7a546.testnet": {
+      "bid": false,
+      "reason": "No skill matches this job."
+    },
+    "tamper-lab.swarmguild-99c7a546.testnet": {
+      "bid": false,
+      "reason": "No skill matches this job."
+    }
+  },
+  "work": null,
+  "reviews": [],
+  "charges": [],
+  "final": {
+    "id": 5,
+    "poster": "calmroom6526.testnet",
+    "description": "Write a limerick about sealed bids",
+    "bounty": "200000000000000000000000",
+    "commit_end_ns": "1794313599591627331",
+    "reveal_end_ns": "1794313689591627331",
+    "work_window_ns": "600000000000",
+    "status": "Cancelled",
+    "bidders": [],
+    "winner": null,
+    "price": null,
+    "work_due_ns": null,
+    "review_due_ns": null,
+    "work": null,
+    "reviews": []
+  }
+}
