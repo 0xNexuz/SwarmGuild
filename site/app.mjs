@@ -1,5 +1,6 @@
 import { createSim, near, KINDS, UNIT, BOND, MIN_FUNDING } from './sim.mjs';
 import { drawScrawl, mountHero, mountDispatch } from './art.mjs';
+import { mountLive, chainStats, near as nearYocto } from './live.mjs';
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -9,12 +10,14 @@ let paused = false, speed = 3, timer = null, jobFilter = 'All', openJob = null, 
 const mine = new Set();
 
 /* ---------- navigation ---------- */
-const views = ['swarm', 'jobs', 'agents', 'console'];
+const views = ['swarm', 'testnet', 'jobs', 'agents', 'console'];
+const TRUTH = { live: 'Live: NEAR Testnet, read in your browser', sim: 'Simulation: no chain, no model calls' };
 function show(name, focus = false) {
   if (!views.includes(name)) name = 'swarm';
   for (const v of document.querySelectorAll('.view')) v.hidden = v.dataset.view !== name;
   for (const a of document.querySelectorAll('[data-nav]')) a.toggleAttribute('aria-current', false);
   for (const a of document.querySelectorAll(`.top nav [data-nav="${name}"]`)) a.setAttribute('aria-current', 'page');
+  $('truth').dataset.mode = name === 'testnet' ? 'live' : 'sim'; $('truth').querySelector('span').textContent = TRUTH[name === 'testnet' ? 'live' : 'sim'];
   document.title = name === 'swarm' ? 'SwarmGuild' : `${name[0].toUpperCase()}${name.slice(1)} · SwarmGuild`;
   if (focus) { scrollTo({ top: 0 }); $('main').querySelector('.view:not([hidden]) h1')?.setAttribute('tabindex', '-1'); }
   render();
@@ -35,14 +38,18 @@ const TRACK = [
 const votesHtml = job => `<span class="votes" aria-label="${job.reviews.filter(v => v.pass).length} pass, ${job.reviews.filter(v => !v.pass).length} fail">${[0, 1, 2].map(i => `<i data-v="${job.reviews[i] ? (job.reviews[i].pass ? 'pass' : 'fail') : ''}"></i>`).join('')}</span>`;
 const nameOf = id => sim.agentOf(id)?.name ?? id;
 
+const currentView = () => document.querySelector('.view:not([hidden])')?.dataset.view;
 function renderMetrics() {
   const st = sim.stats(), inv = sim.invariant();
-  const cells = [['Jobs posted', st.jobs, st.jobs / Math.max(st.jobs, 40)], ['Paid after review', st.paid, st.paid / Math.max(1, st.jobs)],
+  const chain = currentView() === 'testnet' ? live.chain : null, cs = chain && chainStats(chain);
+  const cells = cs ? [['Jobs on chain', cs.jobs, 1], ['Paid after review', cs.paid, cs.paid / Math.max(1, cs.jobs)], ['Rejected by reviewers', cs.rejected, cs.rejected / Math.max(1, cs.jobs)],
+    ['Agents, hosted', `${cs.agents}, ${cs.hosted}`, cs.hosted / Math.max(1, cs.agents)], ['Earned by agents', `${nearYocto(cs.earned)} N`, 1], ['Inference billed', `${nearYocto(cs.inference, 5)} N`, Math.min(1, Number(cs.inference) / Math.max(1, Number(cs.earned)))]]
+    : [['Jobs posted', st.jobs, st.jobs / Math.max(st.jobs, 40)], ['Paid after review', st.paid, st.paid / Math.max(1, st.jobs)],
     ['Rejected by reviewers', st.rejected, st.rejected / Math.max(1, st.jobs)], ['Agents able to bid', `${st.alive}/${st.agents}`, st.alive / st.agents],
     ['Earned by agents', `${near(st.earned)} N`, st.earned / Math.max(1, inv.deposited)], ['Inference billed', `${near(st.inference)} N`, st.inference / Math.max(1, st.earned)]];
   const el = $('metrics');
-  if (!el.children.length) el.innerHTML = cells.map(([label]) => `<div class="metric"><small>${label}</small><b></b><span></span></div>`).join('');
-  cells.forEach(([, value, share], i) => { el.children[i].querySelector('b').textContent = value; el.children[i].querySelector('span').style.width = `${Math.min(100, Math.max(2, share * 100))}%`; });
+  if (!el.children.length) el.innerHTML = cells.map(() => '<div class="metric"><small></small><b></b><span></span></div>').join('');
+  cells.forEach(([label, value, share], i) => { el.children[i].querySelector('small').textContent = label; el.children[i].querySelector('b').textContent = value; el.children[i].querySelector('span').style.width = `${Math.min(100, Math.max(2, share * 100))}%`; });
 }
 
 function renderSwarm() {
@@ -122,7 +129,7 @@ function renderConsole() {
 
 function render() {
   renderMetrics();
-  const view = document.querySelector('.view:not([hidden])')?.dataset.view;
+  const view = currentView();
   if (view === 'swarm') renderSwarm(); else if (view === 'jobs') renderJobs(); else if (view === 'agents') renderAgents(); else if (view === 'console') renderConsole();
 }
 
@@ -163,9 +170,12 @@ $('ctl-reset').addEventListener('click', () => { sim = createSim(Math.floor(Math
 $('ctl-speed').addEventListener('input', e => { speed = Number(e.target.value); schedule(); });
 
 /* ---------- start ---------- */
+const live = mountLive($);
+live.onChange(() => renderMetrics());
 drawScrawl($('scrawl'));
 mountHero($('hero-art'), () => sim);
 mountDispatch($('dispatch-art'), () => sim);
 show(location.hash.slice(1));
 schedule();
+live.start(() => ['testnet', 'swarm'].includes(currentView()));
 document.addEventListener('visibilitychange', () => { if (document.hidden) clearInterval(timer); else schedule(); });

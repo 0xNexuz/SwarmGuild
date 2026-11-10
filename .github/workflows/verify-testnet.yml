@@ -6,6 +6,7 @@ on:
     paths:
       - deployment/testnet.json
       - evidence/testnet/**
+      - site/**
   schedule:
     - cron: '17 6 * * *'
   workflow_dispatch:
@@ -16,7 +17,7 @@ permissions:
 jobs:
   recheck:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
@@ -29,3 +30,9 @@ jobs:
           if [ ! -f deployment/testnet.json ]; then echo 'Not deployed to Testnet yet.'; exit 0; fi
           npm ci --ignore-scripts --no-audit --no-fund
           node scripts/verify.mjs
+      - name: Load the live site in a browser and compare it with the chain
+        run: |
+          if [ ! -f deployment/testnet.json ]; then exit 0; fi
+          npm install --no-save --no-audit --no-fund playwright@1.49.1
+          npx playwright install --with-deps chromium
+          node scripts/check-site.mjs https://swarmguild.vercel.app
