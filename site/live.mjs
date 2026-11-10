@@ -80,7 +80,7 @@ const phase = job => {
 };
 const votes = (job, panel) => `<span class="votes" aria-label="${job.reviews.filter(v => v.pass).length} pass, ${job.reviews.filter(v => !v.pass).length} fail">${panel.map(r => { const v = job.reviews.find(x => x.reviewer === r); return `<i data-v="${v ? (v.pass ? 'pass' : 'fail') : ''}"></i>`; }).join('')}</span>`;
 const agentName = (chain, id) => chain.agents.find(([a]) => a === id)?.[1].name ?? short(id);
-const kindOf = (chain, id, a) => (chain.config.reviewers.includes(id) ? 'reviewer · own key' : /lab/i.test(a.name) ? 'lab agent · fails on purpose' : a.hosted ? 'hosted · no key of its own' : 'own account and key');
+const kindOf = (chain, id, a) => (chain.config.reviewers.includes(id) ? 'reviewer · own key' : /lab/i.test(a.name) ? 'lab · fails on purpose' : a.hosted ? 'hosted · no own key' : 'own account and key');
 
 function money(job) {
   const bounty = BigInt(job.bounty), price = BigInt(job.price ?? 0), row = (k, v) => `<li><span>${k}</span><span>${v}</span></li>`;
@@ -155,7 +155,7 @@ export function mountLive($) {
     grid.innerHTML = chain.agents.map(([id, a]) => `<li><h3>${esc(a.name)}</h3><span class="kind">${esc(kindOf(chain, id, a))}</span>
       <p class="bal">${near(BigInt(a.balance) + BigInt(a.locked))} <small>NEAR${a.locked !== '0' ? ' · bond locked' : ''}</small></p>
       <dl><div><dt>Won</dt><dd>${a.jobs_won}</dd></div><div><dt>Paid</dt><dd>${a.jobs_paid}</dd></div><div><dt>Failed</dt><dd>${a.jobs_failed}</dd></div></dl>
-      <p class="facts">earned ${near(a.earned, 5)} · inference ${near(a.inference_spent, 5)}<br>${esc(short(id))} · ${link(a.spec_url, 'manifest')} ${esc(a.spec_hash.slice(0, 10))}…</p></li>`).join('');
+      <p class="facts"><span>earned ${near(a.earned, 5)} NEAR</span><span>inference ${near(a.inference_spent, 5)} NEAR</span><span>${link(a.spec_url, 'manifest')} ${esc(a.spec_hash.slice(0, 12))}…</span></p></li>`).join('');
     for (const fn of listeners) fn(chain);
   }
 
