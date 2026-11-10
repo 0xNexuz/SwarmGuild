@@ -187,6 +187,6 @@ CI runs these on every push, rebuilds the WASM and fails if it differs from the 
 
 ## Team
 
-SwarmGuild is a team entry by Swerve and Sage, published under the [0xNexuz](https://github.com/0xNexuz) GitHub account. The builder behind that account also entered [**AgentShield**](https://github.com/0xNexuz/agentshield) in this hackathon's AI Security & Defense track as a solo project: spending limits for AI agents, enforced by a NEAR vault contract. The two projects share no contract, account or deployment.
+SwarmGuild is a team entry by three people: [0xNexuz](https://github.com/0xNexuz), Swerve and Sage. 0xNexuz also entered [**AgentShield**](https://github.com/0xNexuz/agentshield) in this hackathon's AI Security & Defense track as a solo project: spending limits for AI agents, enforced by a NEAR vault contract. The two projects share no contract, account or deployment.
 
 [MIT licensed](LICENSE).
