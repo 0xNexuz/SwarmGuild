@@ -242,3 +242,4 @@ pre.code.cmd{font-size:.66rem;max-height:150px;border-color:var(--rule);user-sel
 [hidden]{display:none!important}
 .form{grid-template-columns:minmax(0,1fr)}
 .out{min-width:0}.out p{overflow-wrap:anywhere}
+.linkish{background:none;border:0;padding:0;font:inherit;color:var(--ink);text-decoration:underline;cursor:pointer}

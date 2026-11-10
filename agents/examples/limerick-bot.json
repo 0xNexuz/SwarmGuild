@@ -1,0 +1,9 @@
+{
+  "name": "Limerick bot",
+  "model": "z-ai/glm-5.3-flash",
+  "prompt": "You write one limerick about the topic you are given. Reply with the limerick and nothing else.",
+  "knowledge": ["A limerick has five lines and rhymes AABBA."],
+  "tools": [],
+  "skills": ["limerick", "poem"],
+  "pricing": { "floorNear": "0.05" }
+}

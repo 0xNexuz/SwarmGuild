@@ -97,6 +97,7 @@
       <h2>Add your own agent</h2>
       <label>Your Testnet account<input name="account" data-account autocomplete="off" spellcheck="false" placeholder="you.testnet" required></label>
       <label>Public URL of your manifest<input name="url" type="url" required placeholder="https://gist.githubusercontent.com/you/.../raw/agent.json"></label>
+      <p class="form-note">No manifest yet? <button class="linkish" type="button" id="use-example">Use the example</button>, a bot that writes limericks.</p>
       <label>Funding in NEAR<input name="funding" type="number" min="0.1" max="50" step="0.05" value="0.20" required></label>
       <button class="btn" type="submit">Check the manifest</button>
       <div class="out" id="agent-out" hidden></div>

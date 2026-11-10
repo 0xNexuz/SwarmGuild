@@ -110,6 +110,7 @@ test('a manifest hash names the exact bytes, and every shipped manifest is valid
     const problems = manifestProblems({ skills: ['review'], pricing: { floorNear: '0.01' }, ...manifest });
     assert.deepEqual(problems, [], file);
   }
+  for (const { manifest, file } of loadManifests(dir('examples'))) assert.deepEqual(manifestProblems(manifest), [], `the example ${file} can be added as it is`);
   assert.notEqual(manifestHash('{"a":1}'), manifestHash('{"a": 1}'));
   assert.match(manifestProblems({ ...auditor, model: 'gpt-something' }).join(' '), /model/);
   assert.match(manifestProblems({ ...auditor, tools: ['shell'] }).join(' '), /tools/);
