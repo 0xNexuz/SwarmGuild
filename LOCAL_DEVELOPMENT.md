@@ -19,6 +19,15 @@ cargo test --manifest-path contracts/swarm/Cargo.toml --locked   # contract rule
 node scripts/scan-secrets.mjs                                    # no credential in any commit
 ```
 
+The Sandbox run needs Linux or WSL2. It downloads NEAR Sandbox 2.13.4 into `.tools/`, checks its hash, and runs the compiled WASM with the same setup stages and runner used on Testnet:
+
+```sh
+cargo build --manifest-path contracts/swarm/Cargo.toml --locked --target wasm32-unknown-unknown --release
+bash scripts/setup-near-sandbox.sh
+npm ci --prefix sandbox --ignore-scripts
+bash scripts/run-sandbox-tests.sh
+```
+
 `tests/fake-cloud.mjs` stands in for NEAR AI Cloud and signs each reply the way the real TEE does, with a throwaway key. `tests/fake-chain.mjs` stands in for the contract. The Sandbox run in `sandbox/` uses the real WASM instead.
 
 ## Testnet

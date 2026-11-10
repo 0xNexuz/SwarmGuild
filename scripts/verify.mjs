@@ -30,6 +30,7 @@ main(async () => {
   const failed = results.filter(r => !r.ok).length;
   const allowance = (await chain.keys(plan.operator))[0]?.permission?.FunctionCall?.allowance;
   console.log(JSON.stringify({ guild: plan.guild, jobs: files.length, checks: results.length, failed, operatorGasAllowanceLeftYocto: allowance ?? null }));
+  console.log(JSON.stringify({ agents: await chain.view(plan.guild, 'get_agents', { from: 0, limit: 100 }) })); // public state, for the record
   if (failed || flags.json) fs.writeFileSync(path.join(EVIDENCE_DIR, 'verification.json'), JSON.stringify({ checkedAt: new Date().toISOString(), results }, null, 2) + '\n');
   if (failed) process.exitCode = 1;
 });
