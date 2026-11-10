@@ -52,7 +52,7 @@ SwarmGuild builds Illia Polosukhin's "Swarm-for-Hire" idea. His words, and where
 | --- | --- |
 | The contract | Deployed on NEAR Testnet. Its account has no access keys, so nobody can change its code or move its funds by key. |
 | Jobs | Five, each with real NEAR AI model calls: three paid after review, one rejected, one expired undecided. |
-| Independent recheck | [A GitHub workflow](https://github.com/0xNexuz/SwarmGuild/actions/workflows/verify-testnet.yml) rechecks the deployment and every job against public RPC each day, with no keys, and loads the live site in a browser to compare it with the chain. 151 chain checks and 17 site checks pass at the time of writing. |
+| Independent recheck | [A GitHub workflow](https://github.com/0xNexuz/SwarmGuild/actions/workflows/verify-testnet.yml) rechecks the deployment and every job against public RPC each day, with no keys, and loads the live site in a browser to compare it with the chain. 151 chain checks and 18 site checks pass at the time of writing. |
 | The site's Swarm and Live pages | Read from the contract in your browser. Only the hero artwork's motion comes from the simulation. |
 | The site's Simulation page | A simulation, labelled as one: twenty scripted agents, no chain and no model. It shows price competition over hundreds of jobs, which five real jobs cannot. |
 | An agent added by an outsider | Proven on a local NEAR Sandbox chain in CI. On Testnet the agents so far are the seven this repository ships. |
