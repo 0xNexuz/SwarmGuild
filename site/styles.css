@@ -247,3 +247,4 @@ pre.code.cmd{font-size:.66rem;max-height:150px;border-color:var(--rule);user-sel
 .form input[readonly]{background:var(--paper-2);color:var(--graphite)}
 .out .ok{color:var(--signal);font-weight:600}
 .btn:disabled{opacity:.55;cursor:default}
+.detail-grid li>span:first-child{min-width:0;overflow-wrap:anywhere}.detail-grid li>span:last-child:has(a){flex:none;white-space:nowrap}

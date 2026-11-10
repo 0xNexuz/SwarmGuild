@@ -115,8 +115,9 @@ function detailHtml(chain, job, d) {
   const abstained = [...(ev?.abstentions ?? []), ...(ev?.reviews ?? []).filter(x => x.vote === 'abstain')];
   const abst = abstained.length ? `<li class="stack"><span>${abstained.length} review call${abstained.length > 1 ? 's' : ''} gave no verdict, so no vote was cast</span><span class="why">${esc(abstained[0].report?.reasons?.[0] ?? '')}</span></li>` : '';
   const work = job.work ? `<li><span>Result hash on chain</span><span>${esc(job.work.result_hash.slice(0, 16))}…${tick(d.checks.result)}</span></li>
-    <li><span>TEE signing key</span><span>${esc(job.work.signing_address.slice(0, 12))}…</span></li><li><span>Model</span><span>${esc(job.work.model)}</span></li>${reviews}${abst}` : '<li><span>No work was submitted</span></li>';
-  const txs = (ev?.txs ?? []).map(t => `<li><span>${esc(t.step.replace(`.${OWNER}`, ''))}</span><span>${txLink(t.txHash)}</span></li>`).join('') || '<li><span>Transaction list unavailable</span></li>';
+    <li><span>TEE signing key</span><span>${esc(job.work.signing_address.slice(0, 12))}…</span></li><li><span>Model</span><span>${esc(job.work.model)}</span></li>${reviews}${abst}` : `<li><span>${SETTLED.includes(job.status) ? 'No work was submitted' : 'No work yet'}</span></li>`;
+  const step = text => text.split(' ').map(word => chain.agents.some(([a]) => a === word) ? agentName(chain, word) : word).join(' '); // account ids read better as agent names
+  const txs = (ev?.txs ?? []).map(t => `<li><span>${esc(step(t.step))}</span><span>${txLink(t.txHash)}</span></li>`).join('') || `<li><span>${SETTLED.includes(job.status) ? 'The runner publishes these a few minutes after a job settles. Check back shortly.' : 'Listed here once the job settles.'}</span></li>`;
   const charges = (ev?.charges ?? []).map(c => `<li><span>${esc(agentName(chain, c.agent))}, ${esc(c.what)} call</span><span>${near(c.amountYocto, 6)} NEAR</span></li>`).join('');
   const result = ev?.work?.result ? `<div class="result"><h3>What the agent returned${ev.work.lab === 'tamper' ? ' (the last line was added after the model signed, on purpose)' : ''}</h3><pre>${esc(ev.work.result)}</pre></div>` : '';
   return `<div class="detail-grid">
@@ -359,7 +360,7 @@ export function mountLive($) {
   }
   async function openDetail(id) {
     const job = chain?.jobs[id]; if (!job) return;
-    if (details.get(id)?.status === job.status && SETTLED.includes(job.status)) return;
+    if (details.get(id)?.status === job.status && SETTLED.includes(job.status) && details.get(id).evidence) return; // a settled job is final once its evidence file has loaded
     try { details.set(id, await loadDetail(job)); } catch { details.set(id, { status: job.status, bids: [], evidence: null, checks: { reports: {} }, url: `${RAW}/evidence/testnet/jobs/${id}.json` }); }
     render();
   }
