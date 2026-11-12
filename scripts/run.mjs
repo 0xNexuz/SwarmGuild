@@ -32,13 +32,15 @@ main(async () => {
     for (const id of [plan.operator, ...plan.accounts.map(a => a.id)]) {
       if (chain.canSign(id) && (await chain.keys(id)).some(k => k.publicKey === chain.publicKey(id) && k.permission === 'FullAccess')) throw new Error(`${id} is loaded with a full-access key. The runner only takes function-call keys.`);
     }
-    if (chain.canSign(plan.owner)) console.log('Note: the owner key is in the keys folder. The always-on runner should not have it.');
+    if (chain.canSign(plan.owner)) console.log('Note: the owner key is in the keys folder. A runner left serving should not have it.');
     // A function-call key's gas allowance cannot be refilled, so stop before the operator's runs out mid-job.
     const canServe = async () => {
       const allowance = BigInt((await chain.keys(plan.operator))[0]?.permission?.FunctionCall?.allowance ?? 0);
       if (allowance < nearToYocto('0.03')) { console.log(`The operator key has ${yoctoToNear(allowance)} NEAR of gas allowance left: too little to serve another job.`); return false; }
       return true;
     };
+    // With no allowance there is nothing to serve, so stop now instead of idling until the time is up.
+    if (!await canServe()) { console.log(JSON.stringify({ served: [], stopped: 'no gas allowance left on the operator key' })); return; }
     const publish = flags.publish === true ? async (jobId, status) => publishEvidence(jobId, status, keysDir(flags)) : undefined;
     const served = await runner.watch({ minutes: Number(flags.minutes ?? 10), maxJobs: flags['max-jobs'] ? Number(flags['max-jobs']) : Infinity, canServe, onSettled: publish });
     console.log(JSON.stringify({ served }));
