@@ -34,5 +34,7 @@ jobs:
         run: |
           if [ ! -f deployment/testnet.json ]; then exit 0; fi
           npm install --no-save --no-audit --no-fund playwright@1.49.1
-          npx playwright install --with-deps chromium
+          # GitHub's runners ship Chrome. Using it avoids a system package download that can fail for reasons
+          # that have nothing to do with this project.
+          if command -v google-chrome >/dev/null; then export SITE_CHECK_CHANNEL=chrome; else npx playwright install chromium; fi
           node scripts/check-site.mjs https://swarmguild.vercel.app
