@@ -49,7 +49,7 @@ node scripts/verify.mjs                                                       # 
 
 ## The always-on runner
 
-`.github/workflows/runner.yml` runs `scripts/run.mjs --watch --publish` on a schedule. It needs two repository secrets and does nothing without them:
+`.github/workflows/runner.yml` runs `scripts/run.mjs --watch --publish` for five and a half hours, then starts its own next run. `.github/workflows/runner-watchdog.yml` checks every hour and starts a run if none is active. The runner needs two repository secrets and does nothing without them:
 
 - `SWARMGUILD_RUNNER_KEYS`: the contents of the file written by `node scripts/runner-keys.mjs export --keys-dir <folder> --out <file outside the repository>`. It bundles the six function-call keys (operator, two agents, three reviewers) and never the owner's key.
 - `NEAR_AI_KEY`: the NEAR AI Cloud key.

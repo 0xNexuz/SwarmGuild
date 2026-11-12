@@ -3,13 +3,15 @@ name: Runner
 # The swarm's always-on runner. It serves every open job on Testnet: bids for the agents it hosts, runs the
 # winner's model call, runs the reviewers, and commits each job's evidence. It holds only function-call keys,
 # which can call their own methods on the guild contract and nothing else. Without its secrets it does nothing.
+#
+# A run serves for five and a half hours and then starts the next one itself, so the handover takes seconds.
+# The watchdog workflow starts a run whenever none is active, which covers a run that failed to hand over.
 on:
-  schedule:
-    - cron: '11 */3 * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: write # to start the next run
 
 # One runner at a time. A new run waits for the current one to end, so there is always one serving.
 concurrency:
@@ -26,6 +28,7 @@ jobs:
         with:
           node-version: 24
       - name: Serve jobs
+        id: serve
         env:
           SWARMGUILD_RUNNER_KEYS: ${{ secrets.SWARMGUILD_RUNNER_KEYS }}
           NEAR_AI_KEY: ${{ secrets.NEAR_AI_KEY }}
@@ -34,9 +37,21 @@ jobs:
             echo 'The runner secrets are not set. Nothing to do.'
             exit 0
           fi
+          echo "started=$(date +%s)" >> "$GITHUB_OUTPUT"
           npm ci --ignore-scripts --no-audit --no-fund
           export SWARMGUILD_KEYS_DIR="$RUNNER_TEMP/swarmguild-keys"
           node scripts/runner-keys.mjs import
           git config user.name 0xNexuz
           git config user.email elikrypttt@gmail.com
           node scripts/run.mjs --watch --minutes 330 --max-jobs 40 --publish --approve-testnet-run
+      # Hand over only after a real stint. A run that stopped early (no secrets, a failed install, an empty gas
+      # allowance) is left to the hourly watchdog, so a persistent failure cannot restart itself in a tight loop.
+      - name: Start the next run
+        if: always() && steps.serve.outputs.started != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STARTED: ${{ steps.serve.outputs.started }}
+        run: |
+          served=$(( $(date +%s) - STARTED ))
+          if [ "$served" -ge 600 ]; then gh workflow run runner.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"; echo "Served for ${served}s. Started the next run."
+          else echo "Served for only ${served}s. Leaving the restart to the watchdog."; fi

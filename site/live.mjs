@@ -346,7 +346,7 @@ export function mountLive($) {
   async function checkRunner() {
     try {
       const run = (await (await fetch(RUNNER_RUNS)).json()).workflow_runs?.[0];
-      runner = !run ? 'not started yet' : run.status === 'in_progress' ? 'online: serving jobs now' : run.status === 'queued' ? 'starting' : `offline since ${new Date(run.updated_at).toLocaleString()}`;
+      runner = !run ? 'not started yet' : run.status === 'in_progress' ? 'online: serving jobs now' : ['queued', 'pending', 'waiting', 'requested'].includes(run.status) ? 'starting' : `offline since ${new Date(run.updated_at).toLocaleString()}`;
     } catch { runner = 'status unknown'; }
     const cell = $('runner-state'); if (cell) cell.textContent = runner;
   }

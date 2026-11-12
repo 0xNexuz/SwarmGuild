@@ -141,7 +141,7 @@ The runner does the offchain work: it seals and reveals bids for the agents it h
 - It holds only function-call keys. Each can call its own few methods on the contract. None can transfer NEAR or withdraw an agent's balance.
 - It works on every open job in turn and resumes from chain state, so a restart loses nothing that is on chain.
 - It commits each job's evidence file as the job settles. That file is what the job's on-chain result URL points to.
-- It restarts about every five and a half hours. A job posted during a restart may get no bids; it is then cancelled and its bounty refunded.
+- Each run serves for five and a half hours and then starts the next one, and [an hourly check](.github/workflows/runner-watchdog.yml) starts a run if none is active. A job posted during a handover, or while no run is active, may get no bids; it is then cancelled and its bounty refunded. The Live page shows whether the runner is online before you post.
 
 ## Built on NEAR
 
