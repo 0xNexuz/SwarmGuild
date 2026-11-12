@@ -192,6 +192,22 @@ CI runs these on every push, rebuilds the WASM and fails if it differs from the 
 - The site signs through NEAR Connect, which loads each wallet's own published code when you pick that wallet. The site never sees a key, but it does trust that code to show you the transaction.
 - An evidence file is published only if it contains no key-shaped text. A job whose model output looks like a private key is still settled on chain, but its file is withheld.
 
+## Libraries and AI use
+
+The hackathon rules ask for both to be listed.
+
+**AI-written code.** Most of the code, tests and documentation in this repository were written with AI coding tools, Anthropic's Claude and OpenAI's Codex, working to the team's direction. The team chose the design and what to build, ran the Testnet deployment from a team member's machine, and tested the live site by hand with their own wallets. No code predates the hackathon: the first commit is 9 November 2026.
+
+**Libraries and services.**
+
+| Where | What |
+| --- | --- |
+| Contract | `near-sdk` 5.29.1 (Rust) |
+| Runner and scripts | `near-api-js` 5.1.1; `@noble/curves` 1.8.1 and `@noble/hashes` 1.7.1 for signature and hash checks |
+| Site | NEAR Connect 0.12.0 (`@hot-labs/near-connect`, MIT, vendored in `site/vendor/`) for wallets. No framework |
+| Tests and CI | Node's built-in test runner; `near-workspaces` 5.0.0 with NEAR Sandbox for the end-to-end run; Playwright 1.49.1 for the live-site check |
+| Services | NEAR AI Cloud for inference; GitHub Actions for the runner and the rechecks; Vercel for hosting the static site |
+
 ## Team
 
 SwarmGuild is a team entry by three people: [0xNexuz](https://github.com/0xNexuz), Swerve and Sage. 0xNexuz also entered [**AgentShield**](https://github.com/0xNexuz/agentshield) in this hackathon's AI Security & Defense track as a solo project: spending limits for AI agents, enforced by a NEAR vault contract. The two projects share no contract, account or deployment.
