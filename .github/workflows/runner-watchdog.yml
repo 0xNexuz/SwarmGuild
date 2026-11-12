@@ -1,0 +1,28 @@
+name: Runner watchdog
+
+# Starts the runner when none is running or queued. Each runner run normally starts the next one itself; this
+# covers the first start and any run that ended without handing over. It holds no keys and reads nothing secret.
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Start the runner if none is active
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          active=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow runner.yml --limit 20 --json status --jq '[.[] | select(.status != "completed")] | length')
+          if [ "$active" = "0" ]; then
+            gh workflow run runner.yml --repo "$GITHUB_REPOSITORY" --ref "${{ github.event.repository.default_branch }}"
+            echo 'No runner was active. Started one.'
+          else
+            echo "A runner is already active ($active run)."
+          fi

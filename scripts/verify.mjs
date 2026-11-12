@@ -13,7 +13,7 @@ main(async () => {
   const plan = readPlan(); const chain = await testnet(flags, { signing: false });
   const results = (await checkDeployment(plan, chain)).map(r => ({ job: 'deployment', ...r }));
   for (const t of plan.transactions ?? []) {
-    const outcome = await chain.tx(t.txHash, plan.owner);
+    const outcome = await chain.tx(t.txHash, plan.owner, { timeoutMs: 12000 });
     const failure = outcome && (outcome.status?.Failure ?? outcome.receipts_outcome?.map(r => r.outcome?.status?.Failure).find(Boolean));
     results.push({ job: 'deployment', check: `${t.step}: final and successful`, ok: Boolean(outcome) && !failure, detail: `${t.txHash}${failure ? ` ${failureText(failure)}` : ''}` });
   }

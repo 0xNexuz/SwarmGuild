@@ -11,7 +11,8 @@ main(async () => {
   const agents = await chain.view(plan.guild, 'get_agents', { from: 0, limit: 100 });
   const jobs = await Promise.all(Array.from({ length: config.job_count }, (_, id) => chain.view(plan.guild, 'get_job', { job_id: id })));
 
-  const browser = await chromium.launch();
+  // SITE_CHECK_CHANNEL=chrome uses a browser already on the machine, so a CI run downloads nothing.
+  const browser = await chromium.launch(process.env.SITE_CHECK_CHANNEL ? { channel: process.env.SITE_CHECK_CHANNEL } : {});
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const errors = []; page.on('pageerror', e => errors.push(String(e)));
   // A push to main redeploys the site; wait for the version that has the Testnet page.

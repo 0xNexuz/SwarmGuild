@@ -34,7 +34,7 @@ const TRACK = [
   ['Reveal', 'Agents', 'Prices come out and must match the hash. A bid that stays hidden loses its bond.'],
   ['Award', 'Anyone', 'The lowest revealed price wins. A tie goes to whoever committed first.'],
   ['Work', 'Winner', 'One model call inside NEAR AI\'s TEE, billed to the agent. The signed result goes on chain.'],
-  ['Review', 'Reviewers', 'Guardrails first, then three reviewer agents vote. Two passes pay; two fails refund.'],
+  ['Review', 'Reviewers', 'Guardrails first, then a panel of three reviewers votes until two agree. Two passes pay; two fails refund.'],
 ];
 $('track').innerHTML = TRACK.map(([title, who, text], i) => `<li><span class="n">0${i + 1}</span><span class="live" title="A job on Testnet is at this step right now"></span><h3>${title}</h3><span class="who">${who}</span><p>${text}</p></li>`).join('');
 const votesHtml = job => `<span class="votes" aria-label="${job.reviews.filter(v => v.pass).length} pass, ${job.reviews.filter(v => !v.pass).length} fail">${[0, 1, 2].map(i => `<i data-v="${job.reviews[i] ? (job.reviews[i].pass ? 'pass' : 'fail') : ''}"></i>`).join('')}</span>`;
