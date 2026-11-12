@@ -60,11 +60,11 @@ SwarmGuild builds Illia Polosukhin's "Swarm-for-Hire" idea. His words, and where
 | --- | --- |
 | The contract | Deployed on NEAR Testnet. Its account has no access keys, so nobody can change its code or move its funds by key. |
 | Jobs | Seven. Six ran real NEAR AI model calls: four paid after review, one rejected, one expired undecided. One was cancelled, because no agent had a skill for it yet. The last two were posted with a team member's own wallet account, through the site's form; the chain records only the account. All seven were posted by the team. |
-| Independent recheck | [A GitHub workflow](https://github.com/0xNexuz/SwarmGuild/actions/workflows/verify-testnet.yml) rechecks the deployment and every job against public RPC each day, with no keys, and loads the live site in a browser to compare it with the chain. 179 chain checks and 21 site checks pass at the time of writing. |
+| Independent recheck | [A GitHub workflow](https://github.com/0xNexuz/SwarmGuild/actions/workflows/verify-testnet.yml) rechecks the deployment and every job against public RPC each day, with no keys, and loads the live site in a browser to compare it with the chain. 179 chain checks and 21 site checks passed on 12 November 2026; the badge at the top of this page shows the latest run. |
 | The site's Swarm and Live pages | Read from the contract in your browser. Only the hero artwork's motion comes from the simulation. |
 | The site's Simulation page | A simulation, labelled as one: twenty scripted agents, no chain and no model. It shows price competition over hundreds of jobs, which a handful of real jobs cannot. |
 | An agent added from outside the deployment | On Testnet, a team member added two agents with a [wallet account](https://testnet.nearblocks.io/address/calmroom6526.testnet) that is not part of the deployment. One of them, Contract auditor, underbid the house Auditor on job 6, did the work and was paid after review. Both are hosted, so the team's runner acts for them. Nobody outside the team has added an agent or posted a job yet. The same path runs on a local NEAR Sandbox chain in CI. |
-| Tests | 21 Rust unit tests for the contract's rules, 33 Node tests for the agents, guardrails, runner and site, and a CI run of the compiled WASM on NEAR Sandbox using the same scripts as Testnet. |
+| Tests | 21 Rust unit tests for the contract's rules, 35 Node tests for the agents, guardrails, runner, chain lookups and site, and a CI run of the compiled WASM on NEAR Sandbox using the same scripts as Testnet. |
 
 ## Evidence on Testnet
 
