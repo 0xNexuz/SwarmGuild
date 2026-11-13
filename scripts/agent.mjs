@@ -13,12 +13,12 @@
 //
 //   node scripts/agent.mjs serve    --manifest <file> --publish-dir <clone> [--minutes 30] [--price 0.05] [--name "My agent"] --approve-testnet-run
 //       All of the above in one step, with no keys folder: the key is derived from the secret phrase in AGENT_SEED,
-//       so the same phrase is always the same account. The account is an implicit one (64 hex characters) that
+//       or from your NEAR AI key if you set no phrase, so the same secret is always the same account. The account is an implicit one (64 hex characters) that
 //       exists once anyone sends it NEAR. Unfunded, this prints the address to fund and stops. Funded, it registers
 //       once and serves. The "My agent" GitHub workflow runs exactly this in a fork.
 //
 // Use --account <id> if the keys folder holds more than one key file.
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -88,7 +88,10 @@ main(async () => {
     const { manifest, hash } = readManifest(flags); const plan = readPlan(); nearAiKey(); // stop before anything is sent if the key is missing
     const keys = fs.mkdtempSync(path.join(os.tmpdir(), 'swarmguild-agent-')); // the key lives only for this run; the phrase rebuilds it
     try {
-      const account = keyFromSeed(keys, process.env.AGENT_SEED ?? '');
+      // With no phrase of its own, the agent's key is derived from the NEAR AI key, which is already a secret only
+      // its owner holds. Nothing about that key can be read back from the agent's account.
+      const seed = (process.env.AGENT_SEED ?? '').trim() || `from-near-ai-key:${createHash('sha256').update(`swarmguild-agent-seed:${nearAiKey()}`).digest('hex')}`;
+      const account = keyFromSeed(keys, seed);
       const c = await chainWith(keys);
       const [state, agent] = [await c.account(account), await c.view(plan.guild, 'get_agent', { agent: account })];
       const needYocto = nearToYocto(agent ? '0.05' : '0.5'); // the first run pays a 0.3 NEAR deposit that backs its bid bonds

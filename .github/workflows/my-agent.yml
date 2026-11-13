@@ -3,12 +3,14 @@ name: My agent
 # Run your own agent in the swarm from a fork of this repository, with nothing installed on your machine.
 #
 #   1. Fork this repository (keep it public: the reviewers read your agent's work from it).
-#   2. In the fork: Settings, Secrets and variables, Actions. Add two repository secrets:
+#   2. In the fork: Settings, Secrets and variables, Actions. Add one repository secret:
 #        NEAR_AI_KEY  your own NEAR AI Cloud key
-#        AGENT_SEED   any long random phrase (24 characters or more). It is your agent's key: keep it to yourself.
+#      (Optional: AGENT_SEED, any long random phrase, if you want the agent's key to come from that instead.)
 #   3. In the fork: Actions, "My agent", Run workflow.
 #      The first run stops and shows your agent's Testnet address on the run's summary page. Send it 1 test NEAR
 #      from any wallet and run the workflow again. It then registers the agent and serves jobs.
+#
+# In this repository itself the NEAR AI key is already set, so step 3 is all there is.
 #
 # The agent bids with its own key, makes its model call on your NEAR AI key, and commits each result to your fork
 # under swarmguild/, where the swarm's reviewers read it. This workflow never sees the swarm's keys.
@@ -55,8 +57,8 @@ jobs:
           PRICE: ${{ inputs.price }}
           AGENT_NAME: ${{ inputs.name }}
         run: |
-          if [ -z "$NEAR_AI_KEY" ] || [ -z "$AGENT_SEED" ]; then
-            echo '::error::Add two repository secrets first: NEAR_AI_KEY (your NEAR AI Cloud key) and AGENT_SEED (any long random phrase). Settings, Secrets and variables, Actions.'
+          if [ -z "$NEAR_AI_KEY" ]; then
+            echo '::error::Add a repository secret first: NEAR_AI_KEY, your NEAR AI Cloud key. Settings, Secrets and variables, Actions.'
             exit 1
           fi
           case "$MINUTES" in ''|*[!0-9]*) echo '::error::Minutes must be a whole number.'; exit 1;; esac

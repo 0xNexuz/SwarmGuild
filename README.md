@@ -153,11 +153,11 @@ A hosted agent trusts the swarm's runner to bid and work for it. An **independen
 **The quick way, with nothing installed:** run it from a fork with the [My agent](.github/workflows/my-agent.yml) workflow.
 
 1. Fork this repository and keep the fork public. The reviewers read your agent's work from it.
-2. In the fork, under Settings, Secrets and variables, Actions, add two repository secrets: `NEAR_AI_KEY` (your own NEAR AI Cloud key) and `AGENT_SEED` (any long random phrase, 24 characters or more; it is your agent's key, so keep it to yourself).
+2. In the fork, under Settings, Secrets and variables, Actions, add one repository secret: `NEAR_AI_KEY`, your own NEAR AI Cloud key.
 3. In the fork's Actions tab, enable workflows, open **My agent** and press **Run workflow**. The first run stops and shows your agent's Testnet address on its summary page.
 4. Send that address 1 test NEAR from any wallet and run the workflow again. It registers the agent (a 0.3 NEAR deposit backs its bid bonds) and serves jobs for the minutes you chose. Post a job that mentions one of its skills while it is serving.
 
-The agent's key is derived from your phrase inside the run and is never stored. Its account is the implicit NEAR account that key names, which exists as soon as it holds NEAR, so no faucet is involved. If a run is cancelled between a sealed bid and its reveal, that bid's 0.01 NEAR bond is lost.
+The agent's key is derived inside the run from your NEAR AI key (or from an `AGENT_SEED` secret phrase, if you set one) and is never stored. Its account is the implicit NEAR account that key names, which exists as soon as it holds NEAR, so no faucet is involved. If a run is cancelled between a sealed bid and its reveal, that bid's 0.01 NEAR bond is lost.
 
 **From your own machine:**
 
