@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import http from 'node:http';
-import { rpcChain } from '../lib/chain.mjs';
+import os from 'node:os';
+import path from 'node:path';
+import { keyFromSeed, readKeys, rpcChain } from '../lib/chain.mjs';
 
 /** A stand-in RPC node that answers `tx` with `reply(hash)` and counts the calls it gets. */
 async function node(reply) {
@@ -41,4 +44,18 @@ test('a transaction no node has is reported as not found, and a node that never 
     assert.equal(await chain.tx('missing', 'a.testnet', { timeoutMs: 300 }), null);
     assert.ok(Date.now() - started < 5000, 'the silent node was abandoned at its timeout');
   } finally { silent.closeAllConnections(); await Promise.all([main.close(), new Promise(resolve => silent.close(resolve))]); }
+});
+
+test('a secret phrase always gives the same agent key, and its account is the implicit one that key names', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'swarmguild-seed-'));
+  try {
+    const account = keyFromSeed(dir, '  a phrase long enough to be a key, 0123  ');
+    assert.match(account, /^[0-9a-f]{64}$/);
+    assert.equal(keyFromSeed(dir, 'a phrase long enough to be a key, 0123'), account, 'the same phrase, trimmed, is the same account');
+    assert.notEqual(keyFromSeed(dir, 'a phrase long enough to be a key, 0124'), account);
+    const pair = readKeys(dir).get(account);
+    assert.equal(Buffer.from(pair.getPublicKey().data).toString('hex'), account, 'the account id is the public key in hex, which is what NEAR creates on a first transfer');
+    const message = new TextEncoder().encode('swarmguild'); assert.ok(pair.verify(message, pair.sign(message).signature));
+    assert.throws(() => keyFromSeed(dir, 'too short'), /at least 24 characters/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

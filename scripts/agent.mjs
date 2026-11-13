@@ -11,11 +11,18 @@
 //       Serves open jobs: sealed bid, reveal, one model call on your NEAR AI key (NEAR_AI_KEY or NEAR_AI_KEY_FILE),
 //       the work committed and pushed to your repository, then submit_work with that file's URL.
 //
+//   node scripts/agent.mjs serve    --manifest <file> --publish-dir <clone> [--minutes 30] [--price 0.05] [--name "My agent"] --approve-testnet-run
+//       All of the above in one step, with no keys folder: the key is derived from the secret phrase in AGENT_SEED,
+//       so the same phrase is always the same account. The account is an implicit one (64 hex characters) that
+//       exists once anyone sends it NEAR. Unfunded, this prints the address to fund and stops. Funded, it registers
+//       once and serves. The "My agent" GitHub workflow runs exactly this in a fork.
+//
 // Use --account <id> if the keys folder holds more than one key file.
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { ensureKey, rpcChain } from '../lib/chain.mjs';
+import { ensureKey, keyFromSeed, rpcChain } from '../lib/chain.mjs';
 import { manifestHash, parseManifest } from '../lib/manifest.mjs';
 import { nearToYocto, yoctoToNear } from '../lib/market.mjs';
 import { attestedKeys } from '../lib/near-ai.mjs';
@@ -40,11 +47,65 @@ const readManifest = flags => {
   return { manifest: parseManifest(bytes), hash: manifestHash(bytes) };
 };
 
+// Shown in the terminal and, in a GitHub workflow, on the run's summary page.
+function tell(text) {
+  console.log(text);
+  if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${text}\n\n`);
+}
+
+async function register(c, plan, account, manifest, hash, flags) {
+  const already = await c.view(plan.guild, 'get_agent', { agent: account });
+  if (already) return { account, registered: true, balanceNear: yoctoToNear(already.balance), note: 'Already registered. Nothing sent.' };
+  const r = await c.call(account, plan.guild, 'add_agent', { agent: account, name: typeof flags.name === 'string' && flags.name.trim() ? flags.name.trim() : manifest.name, model: manifest.model, spec_hash: hash,
+    spec_url: typeof flags.url === 'string' ? flags.url : '', hosted: false }, { depositYocto: nearToYocto(flags.deposit ?? '0.3') });
+  return { account, registered: true, txHash: r.txHash, depositNear: String(flags.deposit ?? '0.3'), skills: manifest.skills };
+}
+
+async function run(c, plan, account, manifest, flags, stateDir) {
+  if (typeof flags['publish-dir'] !== 'string') throw new Error('Name a clone of a public GitHub repository with --publish-dir. Your work is committed and pushed there, where the reviewers read it.');
+  const apiKey = nearAiKey();
+  if (!c.canSign(account)) throw new Error(`There is no key for ${account}.`);
+  if (!await c.view(plan.guild, 'get_agent', { agent: account })) throw new Error(`${account} is not registered yet. Run the register command first.`);
+  const ai = { apiKey, tools: { near_account: nearAccountTool(c) } };
+  await attestedKeys(manifest.model, ai); // fail early if NEAR AI is unreachable or the key is wrong
+  const worker = createWorker({ chain: c, guild: plan.guild, account, manifest, ai, publish: gitPublisher(path.resolve(flags['publish-dir'])),
+    store: fileStore({ evidenceDir: stateDir, secretsFile: path.join(stateDir, 'bid-secrets.json') }),
+    price: typeof flags.price === 'string' && flags.price.trim() ? () => nearToYocto(flags.price.trim()) : null, log: line => console.log(line) });
+  const minutes = Number(flags.minutes ?? 60);
+  tell(`${account} is serving ${plan.guild} for ${minutes} minutes. It bids on jobs that mention: ${manifest.skills.join(', ')}`);
+  const served = await worker.watch({ minutes });
+  tell(served.length ? `Served: ${served.map(j => `job ${j.jobId} (${j.submitted ? 'won, work submitted' : j.won ? 'won' : 'bid, did not win'})`).join(', ')}.` : 'No job it could bid on was posted while it was serving.');
+  console.log(JSON.stringify({ served }));
+}
+
 main(async () => {
   const { flags, words } = parseArgs(); const command = words[0];
-  const dir = keysDir(flags);
-  const chain = () => rpcChain({ networkId: 'testnet', nodeUrl: RPC_URLS[0], fallbackUrls: RPC_URLS.slice(1), txUrls: ARCHIVAL_URLS, keysDir: dir });
   if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0') throw new Error('TLS certificate checks must stay on.');
+  const chainWith = keys => rpcChain({ networkId: 'testnet', nodeUrl: RPC_URLS[0], fallbackUrls: RPC_URLS.slice(1), txUrls: ARCHIVAL_URLS, keysDir: keys });
+
+  if (command === 'serve') {
+    if (flags['approve-testnet-run'] !== true) throw new Error('This sends Testnet transactions and spends your NEAR AI credit. Add --approve-testnet-run.');
+    const { manifest, hash } = readManifest(flags); const plan = readPlan(); nearAiKey(); // stop before anything is sent if the key is missing
+    const keys = fs.mkdtempSync(path.join(os.tmpdir(), 'swarmguild-agent-')); // the key lives only for this run; the phrase rebuilds it
+    try {
+      const account = keyFromSeed(keys, process.env.AGENT_SEED ?? '');
+      const c = await chainWith(keys);
+      const [state, agent] = [await c.account(account), await c.view(plan.guild, 'get_agent', { agent: account })];
+      const needYocto = nearToYocto(agent ? '0.05' : '0.5'); // the first run pays a 0.3 NEAR deposit that backs its bid bonds
+      if (!state.found || BigInt(state.balanceYocto) < needYocto) {
+        tell(`**Your agent's account needs test NEAR before it can start.**\n\nSend ${agent ? '0.2' : '1'} NEAR on **Testnet** from any wallet (Meteor works) to this address, then run this again:\n\n\`${account}\`\n\nIt holds ${state.found ? yoctoToNear(state.balanceYocto) : '0'} NEAR now.`);
+        if (process.env.GITHUB_ACTIONS) console.log(`::warning::Not started. Send test NEAR to ${account} and run again.`);
+        return;
+      }
+      const reg = await register(c, plan, account, manifest, hash, flags);
+      tell(reg.txHash ? `Registered ${account} as an agent: https://testnet.nearblocks.io/txns/${reg.txHash}` : `${account} is already registered.`);
+      await run(c, plan, account, manifest, flags, keys);
+    } finally { fs.rmSync(keys, { recursive: true, force: true }); }
+    return;
+  }
+
+  const dir = keysDir(flags);
+  const chain = () => chainWith(dir);
 
   if (command === 'init') {
     fs.mkdirSync(dir, { recursive: true });
@@ -71,29 +132,14 @@ main(async () => {
 
   if (command === 'register') {
     if (flags['approve-testnet-spend'] !== true) throw new Error('This sends a Testnet transaction with a deposit. Add --approve-testnet-spend.');
-    const c = await chain();
-    const already = await c.view(plan.guild, 'get_agent', { agent: account });
-    if (already) { console.log(JSON.stringify({ account, registered: true, balanceNear: yoctoToNear(already.balance), note: 'Already registered. Nothing sent.' })); return; }
-    const r = await c.call(account, plan.guild, 'add_agent', { agent: account, name: manifest.name, model: manifest.model, spec_hash: hash, spec_url: typeof flags.url === 'string' ? flags.url : '', hosted: false },
-      { depositYocto: nearToYocto(flags.deposit ?? '0.3') });
-    console.log(JSON.stringify({ account, registered: true, txHash: r.txHash, depositNear: String(flags.deposit ?? '0.3'), skills: manifest.skills }));
+    console.log(JSON.stringify(await register(await chain(), plan, account, manifest, hash, flags)));
     return;
   }
 
   if (command === 'run') {
     if (flags['approve-testnet-run'] !== true) throw new Error('This sends Testnet transactions and spends your NEAR AI credit. Add --approve-testnet-run.');
-    if (typeof flags['publish-dir'] !== 'string') throw new Error('Name a clone of a public GitHub repository with --publish-dir. Your work is committed and pushed there, where the reviewers read it.');
-    const c = await chain(); const apiKey = nearAiKey();
-    if (!c.canSign(account)) throw new Error(`The keys folder has no key for ${account}.`);
-    if (!await c.view(plan.guild, 'get_agent', { agent: account })) throw new Error(`${account} is not registered yet. Run the register command first.`);
-    const ai = { apiKey, tools: { near_account: nearAccountTool(c) } };
-    await attestedKeys(manifest.model, ai); // fail early if NEAR AI is unreachable or the key is wrong
-    const worker = createWorker({ chain: c, guild: plan.guild, account, manifest, ai, publish: gitPublisher(path.resolve(flags['publish-dir'])),
-      store: fileStore({ evidenceDir: dir, secretsFile: path.join(dir, 'bid-secrets.json') }),
-      price: typeof flags.price === 'string' ? () => nearToYocto(flags.price) : null, log: line => console.log(line) });
-    console.log(`${account} is serving ${plan.guild} for ${flags.minutes ?? 60} minutes. It bids on jobs that mention: ${manifest.skills.join(', ')}`);
-    console.log(JSON.stringify({ served: await worker.watch({ minutes: Number(flags.minutes ?? 60) }) }));
+    await run(await chain(), plan, account, manifest, flags, dir);
     return;
   }
-  throw new Error('Usage: node scripts/agent.mjs init | register | run. The top of this file lists the flags.');
+  throw new Error('Usage: node scripts/agent.mjs init | register | run | serve. The top of this file lists the flags.');
 });
