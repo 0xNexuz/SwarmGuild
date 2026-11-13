@@ -6,7 +6,7 @@ import { failureText } from '../lib/chain.mjs';
 import { manifestHash } from '../lib/manifest.mjs';
 import { checkDeployment } from '../lib/setup.mjs';
 import { verifyJob } from '../lib/verify.mjs';
-import { EVIDENCE_DIR, main, parseArgs, readPlan, testnet } from './common.mjs';
+import { EVIDENCE_DIR, main, parseArgs, RAW_BASE, readPlan, testnet } from './common.mjs';
 
 main(async () => {
   const { flags } = parseArgs();
@@ -25,7 +25,7 @@ main(async () => {
   }
   const jobsDir = path.join(EVIDENCE_DIR, 'jobs');
   const files = fs.existsSync(jobsDir) ? fs.readdirSync(jobsDir).filter(f => f.endsWith('.json')).sort((a, b) => parseInt(a) - parseInt(b)) : [];
-  for (const file of files) results.push(...await verifyJob(JSON.parse(fs.readFileSync(path.join(jobsDir, file), 'utf8')), chain, { guild: plan.guild }));
+  for (const file of files) results.push(...await verifyJob(JSON.parse(fs.readFileSync(path.join(jobsDir, file), 'utf8')), chain, { guild: plan.guild, ownResultUrl: id => `${RAW_BASE}/evidence/testnet/jobs/${id}.json` }));
   for (const r of results) console.log(`${r.ok ? 'ok  ' : 'FAIL'} [${r.job}] ${r.check}${r.ok ? '' : ` (${r.detail})`}`);
   const failed = results.filter(r => !r.ok).length;
   const allowance = (await chain.keys(plan.operator))[0]?.permission?.FunctionCall?.allowance;
