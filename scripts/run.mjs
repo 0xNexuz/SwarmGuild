@@ -2,7 +2,7 @@
 //   node scripts/run.mjs --scenario summary|audit|injection|tamper --approve-testnet-run
 //   node scripts/run.mjs --post "<job text>" --bounty 0.3 --approve-testnet-run
 //   node scripts/run.mjs --job <id> --approve-testnet-run            resume a job
-//   node scripts/run.mjs --post "<job text>" --bounty 0.3 --post-only --approve-testnet-run   post it and leave it to the always-on runner
+//   node scripts/run.mjs --post "<job text>" --bounty 0.3 --post-only --approve-testnet-run   post it and leave it to the runner on GitHub Actions
 //   node scripts/run.mjs --watch --minutes 30 --approve-testnet-run  serve every open job, including other people's
 //   Extra flags for --watch: --max-jobs N, and --publish to commit and push each job's evidence as it settles.
 import { execFileSync } from 'node:child_process';
@@ -54,7 +54,7 @@ main(async () => {
     const description = scenario?.description ?? flags.post; const bounty = scenario?.bountyNear ?? flags.bounty ?? '0.3';
     if (typeof description !== 'string') throw new Error('Give --scenario <name>, --post "<job text>", --job <id> or --watch.');
     jobId = await runner.postJob(flags.poster ?? plan.owner, description, nearToYocto(bounty));
-    if (flags['post-only'] === true) { console.log(JSON.stringify({ jobId, status: 'Open', note: 'Posted. The always-on runner will serve it.' })); return; }
+    if (flags['post-only'] === true) { console.log(JSON.stringify({ jobId, status: 'Open', note: 'Posted. The runner on GitHub Actions serves it when one is running.' })); return; }
   }
   const end = await runner.runJob(jobId);
   console.log(JSON.stringify({ jobId, status: end.status, ...(end.undecided ? { undecided: true, resumeAfter: end.expiresAt } : {}), evidence: `evidence/testnet/jobs/${jobId}.json` }));

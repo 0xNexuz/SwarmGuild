@@ -194,7 +194,7 @@ test('a worker whose model returns nothing does not submit empty work', async ()
   assert.equal(chain.state.txs.filter(t => t.method === 'submit_work').length, 0);
 });
 
-test('the always-on loop works on every open job in turn, publishes each as it settles, and stops at its limits', async () => {
+test('the serving loop works on every open job in turn, publishes each as it settles, and stops at its limits', async () => {
   const { chain, runner, logs } = await swarm({ extraSigners: ['alice.test'] });
   const a = await runner.postJob('alice.test', 'Give a summary of NEAR access keys.', N('0.2'));
   const b = await runner.postJob(owner, 'Write a haiku about sealed bids.', N('0.2'));
@@ -213,7 +213,7 @@ test('the always-on loop works on every open job in turn, publishes each as it s
   assert.deepEqual(await runner.watch({ minutes: 1, maxJobs: 1 }), [{ jobId: c, status: 'Cancelled' }]);
 });
 
-test('an undecided job does not hold the always-on loop: it is parked, then expired once its deadline passes', async () => {
+test('an undecided job does not hold the serving loop: it is parked, then expired once its deadline passes', async () => {
   const { chain, runner } = await swarm({ cloud: fakeCloud(answers({ verdict: 'I cannot decide.' })) });
   const jobId = await runner.postJob(owner, 'Give a summary of NEAR access keys.', N('0.3'));
   assert.deepEqual(await runner.watch({ minutes: 1, maxJobs: 1 }), [], 'the loop returns without waiting an hour');

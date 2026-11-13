@@ -43,7 +43,7 @@ reviewers   -> review(pass or fail, report hash)        one vote each
 These checks are offchain, in `lib/agents.mjs`, and need no model call. Work that fails any of them gets a fail vote straight away.
 
 - The published result has the hash the winner put on chain.
-- The winner published the exact request and reply bytes of its model call, and the signature on chain is a valid NEAR AI TEE signature over them, from a key in a fresh attestation report.
+- The winner published the exact request and reply bytes of its model call, and the signature on chain is a valid NEAR AI TEE signature over them, from a key in NEAR AI's attestation report (the runner reuses a report for up to thirty minutes).
 - The signed request is this job, and the result is the reply the model signed. Work edited after signing, or a signed reply to some other job, fails.
 - The result contains no private key or API key.
 

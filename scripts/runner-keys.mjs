@@ -1,4 +1,4 @@
-// Moves the runner's keys between a keys folder and one secret value, for the always-on runner on GitHub Actions.
+// Moves the runner's keys between a keys folder and one secret value, for the runner on GitHub Actions.
 // Only the limited function-call keys go in: the operator, the two self-keyed agents and the three reviewers.
 // The owner's full-access key is never included.
 //   node scripts/runner-keys.mjs export --keys-dir <folder> --out <file outside the repository>

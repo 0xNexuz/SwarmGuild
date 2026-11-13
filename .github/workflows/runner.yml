@@ -13,7 +13,7 @@ permissions:
   contents: write
   actions: write # to start the next run
 
-# One runner at a time. A new run waits for the current one to end, so there is always one serving.
+# One runner at a time. A new run waits for the current one to end, so two never serve at once.
 concurrency:
   group: swarmguild-runner
   cancel-in-progress: false
