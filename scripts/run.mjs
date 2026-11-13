@@ -2,7 +2,7 @@
 //   node scripts/run.mjs --scenario summary|audit|injection|tamper --approve-testnet-run
 //   node scripts/run.mjs --post "<job text>" --bounty 0.3 --approve-testnet-run
 //   node scripts/run.mjs --job <id> --approve-testnet-run            resume a job
-//   node scripts/run.mjs --post "<job text>" --bounty 0.3 --post-only --approve-testnet-run   post it and leave it to the always-on runner
+//   node scripts/run.mjs --post "<job text>" --bounty 0.3 --post-only --approve-testnet-run   post it and leave it to the runner on GitHub Actions
 //   node scripts/run.mjs --watch --minutes 30 --approve-testnet-run  serve every open job, including other people's
 //   Extra flags for --watch: --max-jobs N, and --publish to commit and push each job's evidence as it settles.
 import { execFileSync } from 'node:child_process';
@@ -12,6 +12,7 @@ import { loadManifests } from '../lib/manifest.mjs';
 import { nearToYocto, yoctoToNear } from '../lib/market.mjs';
 import { attestedKeys } from '../lib/near-ai.mjs';
 import { createRunner, fileStore } from '../lib/runner.mjs';
+import { nearAccountTool } from '../lib/tools.mjs';
 import { at, EVIDENCE_DIR, keysDir, main, nearAiKey, parseArgs, RAW_BASE, readPlan, testnet } from './common.mjs';
 
 main(async () => {
@@ -19,7 +20,7 @@ main(async () => {
   if (flags['approve-testnet-run'] !== true) throw new Error('This sends Testnet transactions and spends NEAR AI credit. Add --approve-testnet-run once the owner has approved it.');
   const plan = readPlan(); const chain = await testnet(flags); const apiKey = nearAiKey();
   const workers = loadManifests(at('agents', 'workers')); const reviewers = loadManifests(at('agents', 'reviewers'));
-  const ai = { apiKey, tools: { near_account: id => chain.account(id) } };
+  const ai = { apiKey, tools: { near_account: nearAccountTool(chain) } };
   await attestedKeys(workers[0].manifest.model, ai); // fail early if NEAR AI or its attestation is unreachable
   const runner = createRunner({ chain, guild: plan.guild, operator: plan.operator, ai,
     manifests: new Map(workers.map(w => [w.hash, w.manifest])),
@@ -32,13 +33,15 @@ main(async () => {
     for (const id of [plan.operator, ...plan.accounts.map(a => a.id)]) {
       if (chain.canSign(id) && (await chain.keys(id)).some(k => k.publicKey === chain.publicKey(id) && k.permission === 'FullAccess')) throw new Error(`${id} is loaded with a full-access key. The runner only takes function-call keys.`);
     }
-    if (chain.canSign(plan.owner)) console.log('Note: the owner key is in the keys folder. The always-on runner should not have it.');
+    if (chain.canSign(plan.owner)) console.log('Note: the owner key is in the keys folder. A runner left serving should not have it.');
     // A function-call key's gas allowance cannot be refilled, so stop before the operator's runs out mid-job.
     const canServe = async () => {
       const allowance = BigInt((await chain.keys(plan.operator))[0]?.permission?.FunctionCall?.allowance ?? 0);
       if (allowance < nearToYocto('0.03')) { console.log(`The operator key has ${yoctoToNear(allowance)} NEAR of gas allowance left: too little to serve another job.`); return false; }
       return true;
     };
+    // With no allowance there is nothing to serve, so stop now instead of idling until the time is up.
+    if (!await canServe()) { console.log(JSON.stringify({ served: [], stopped: 'no gas allowance left on the operator key' })); return; }
     const publish = flags.publish === true ? async (jobId, status) => publishEvidence(jobId, status, keysDir(flags)) : undefined;
     const served = await runner.watch({ minutes: Number(flags.minutes ?? 10), maxJobs: flags['max-jobs'] ? Number(flags['max-jobs']) : Infinity, canServe, onSettled: publish });
     console.log(JSON.stringify({ served }));
@@ -51,7 +54,7 @@ main(async () => {
     const description = scenario?.description ?? flags.post; const bounty = scenario?.bountyNear ?? flags.bounty ?? '0.3';
     if (typeof description !== 'string') throw new Error('Give --scenario <name>, --post "<job text>", --job <id> or --watch.');
     jobId = await runner.postJob(flags.poster ?? plan.owner, description, nearToYocto(bounty));
-    if (flags['post-only'] === true) { console.log(JSON.stringify({ jobId, status: 'Open', note: 'Posted. The always-on runner will serve it.' })); return; }
+    if (flags['post-only'] === true) { console.log(JSON.stringify({ jobId, status: 'Open', note: 'Posted. The runner on GitHub Actions serves it when one is running.' })); return; }
   }
   const end = await runner.runJob(jobId);
   console.log(JSON.stringify({ jobId, status: end.status, ...(end.undecided ? { undecided: true, resumeAfter: end.expiresAt } : {}), evidence: `evidence/testnet/jobs/${jobId}.json` }));

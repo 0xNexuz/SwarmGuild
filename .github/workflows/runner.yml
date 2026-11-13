@@ -1,6 +1,6 @@
 name: Runner
 
-# The swarm's always-on runner. It serves every open job on Testnet: bids for the agents it hosts, runs the
+# The swarm's runner. It serves every open job on Testnet: bids for the agents it hosts, runs the
 # winner's model call, runs the reviewers, and commits each job's evidence. It holds only function-call keys,
 # which can call their own methods on the guild contract and nothing else. Without its secrets it does nothing.
 #
@@ -13,7 +13,7 @@ permissions:
   contents: write
   actions: write # to start the next run
 
-# One runner at a time. A new run waits for the current one to end, so there is always one serving.
+# One runner at a time. A new run waits for the current one to end, so two never serve at once.
 concurrency:
   group: swarmguild-runner
   cancel-in-progress: false
@@ -44,7 +44,7 @@ jobs:
           git config user.name 0xNexuz
           git config user.email elikrypttt@gmail.com
           node scripts/run.mjs --watch --minutes 330 --max-jobs 40 --publish --approve-testnet-run
-      # Hand over only after a real stint. A run that stopped early (no secrets, a failed install, an empty gas
+      # Hand over only after a real stint, and always on the default branch (no --ref), never on a side branch. A run that stopped early (no secrets, a failed install, an empty gas
       # allowance) is left to the hourly watchdog, so a persistent failure cannot restart itself in a tight loop.
       - name: Start the next run
         if: always() && steps.serve.outputs.started != ''
@@ -53,5 +53,5 @@ jobs:
           STARTED: ${{ steps.serve.outputs.started }}
         run: |
           served=$(( $(date +%s) - STARTED ))
-          if [ "$served" -ge 600 ]; then gh workflow run runner.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"; echo "Served for ${served}s. Started the next run."
+          if [ "$served" -ge 600 ]; then gh workflow run runner.yml --repo "$GITHUB_REPOSITORY"; echo "Served for ${served}s. Started the next run."
           else echo "Served for only ${served}s. Leaving the restart to the watchdog."; fi

@@ -13,7 +13,9 @@ import { nearToYocto as N } from '../lib/market.mjs';
 import { forgetAttestations } from '../lib/near-ai.mjs';
 import { createRunner, fileStore } from '../lib/runner.mjs';
 import { buildPlan, checkDeployment, runStage, STAGES } from '../lib/setup.mjs';
+import { nearAccountTool } from '../lib/tools.mjs';
 import { verifyJob } from '../lib/verify.mjs';
+import { createWorker } from '../lib/worker.mjs';
 import { fakeCloud } from '../tests/fake-cloud.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -61,14 +63,15 @@ test('SwarmGuild on NEAR Sandbox: deploy, run jobs, add an outside agent, verify
 
   const workers = loadManifests(path.join(agentsDir, 'workers')); const reviewers = loadManifests(path.join(agentsDir, 'reviewers'));
   const aliceManifest = Buffer.from(JSON.stringify({ name: 'Limerick bot', model: 'z-ai/glm-5.3-flash', prompt: 'You write one limerick about the topic.', skills: ['limerick'], pricing: { floorNear: '0.05' } }));
+  const published = new Map(); // what an independent agent has made public, by URL
   const cloud = fakeCloud(request => (request.messages[0].content.includes('You are reviewing another AI agent') ? '{"pass": true, "reasons": ["Does the job."]}' : '- Accounts have names.\n- Keys can be limited.'));
   forgetAttestations();
   const store = fileStore({ evidenceDir: path.join(tmp, 'evidence'), secretsFile: path.join(keysDir, 'bid-secrets.json') });
   const runner = createRunner({ chain, guild: plan.guild, operator: plan.operator, store,
     manifests: new Map(workers.map(w => [w.hash, w.manifest])),
     reviewers: reviewers.map(r => ({ account: `rev-${r.slug}.${owner}`, manifest: r.manifest })),
-    ai: { apiKey: 'placeholder-test-key-not-real', fetchImpl: cloud.fetchImpl, delay: async () => {}, tools: { near_account: id => chain.account(id) } },
-    resultUrl: id => `https://example.test/jobs/${id}.json`, fetchImpl: async () => new Response(aliceManifest), log: line => console.log(line) });
+    ai: { apiKey: 'placeholder-test-key-not-real', fetchImpl: cloud.fetchImpl, delay: async () => {}, tools: { near_account: nearAccountTool(chain) } },
+    resultUrl: id => `https://example.test/jobs/${id}.json`, fetchImpl: async url => new Response(published.get(url) ?? aliceManifest), log: line => console.log(line) });
   const windows = { commitSeconds: 25, revealSeconds: 25, workSeconds: 300 };
   const agent = id => chain.view(plan.guild, 'get_agent', { agent: id });
   const verified = async jobId => {
@@ -111,6 +114,35 @@ test('SwarmGuild on NEAR Sandbox: deploy, run jobs, add an outside agent, verify
     const before = BigInt((await chain.account(alice.accountId)).balanceYocto);
     await chain.call(alice.accountId, plan.guild, 'withdraw_credit', {}, { gasTgas: 50 });
     assert.ok(BigInt((await chain.account(alice.accountId)).balanceYocto) > before + BigInt(bot.balance) - N('0.01'), 'the NEAR arrived in the backer\'s account');
+  });
+
+  await t.test('an independent agent with its own key and process outbids the house Auditor, is paid, and is billed nothing', async () => {
+    const bob = await root.createSubAccount('bob', { initialBalance: (N('5')).toString() });
+    const bobKeys = path.join(tmp, 'bob-keys'); fs.mkdirSync(bobKeys);
+    const pair = await bob.getKey();
+    fs.writeFileSync(path.join(bobKeys, `${bob.accountId}.json`), JSON.stringify({ account_id: bob.accountId, public_key: pair.getPublicKey().toString(), private_key: pair.toString() }));
+    const bobChain = await rpcChain({ networkId: 'sandbox', nodeUrl, keysDir: bobKeys });
+    assert.equal(chain.canSign(bob.accountId), false, 'the swarm\'s runner holds no key for it');
+    const bytes = fs.readFileSync(path.join(agentsDir, 'examples', 'contract-auditor.json')); const manifest = JSON.parse(bytes);
+    await bobChain.call(bob.accountId, plan.guild, 'add_agent', { agent: bob.accountId, name: 'Bob\'s auditor', model: manifest.model, spec_hash: manifestHash(bytes), spec_url: '', hosted: false }, { depositYocto: N('0.3') });
+    const worker = createWorker({ chain: bobChain, guild: plan.guild, account: bob.accountId, manifest,
+      ai: { apiKey: 'bobs-own-placeholder-key', fetchImpl: cloud.fetchImpl, delay: async () => {}, tools: { near_account: nearAccountTool(bobChain) } },
+      store: fileStore({ evidenceDir: path.join(tmp, 'bob-evidence'), secretsFile: path.join(bobKeys, 'bid-secrets.json') }),
+      publish: async (jobId, payload) => { const url = `https://bob.example/swarmguild/job-${jobId}.json`; published.set(url, JSON.stringify(payload)); return url; },
+      log: line => console.log(`[bob] ${line}`) });
+    const jobId = await runner.postJob(owner, `Security audit of the near-sdk contract at ${plan.guild}: who can call withdraw_credit?`, N('0.3'), windows);
+    const serve = (async () => { for (;;) { const step = await worker.tick(jobId); if (step.done) return step; await new Promise(r => setTimeout(r, 1500)); } })();
+    const [end, mine] = await Promise.all([runner.runJob(jobId), serve]);
+    assert.equal(end.status, 'Paid'); assert.equal(mine.submitted, true);
+    const job = await chain.view(plan.guild, 'get_job', { job_id: jobId });
+    assert.deepEqual([...job.bidders].sort(), [`auditor.${owner}`, bob.accountId].sort(), 'a real price contest on chain');
+    assert.equal(job.winner, bob.accountId);
+    assert.equal(job.work.result_url, `https://bob.example/swarmguild/job-${jobId}.json`);
+    const me = await agent(bob.accountId);
+    assert.equal(me.inference_spent, '0', 'it paid for its own model call, so the operator billed it nothing');
+    assert.equal(BigInt(me.earned), BigInt(job.price) - BigInt(job.price) / 10n); assert.equal(me.jobs_paid, 1);
+    assert.equal(store.readJob(jobId).work.independent, true);
+    await verified(jobId);
   });
 
   await t.test('the operator and the reviewers can withdraw what they earned, and the contract still covers everything it owes', async () => {

@@ -55,11 +55,17 @@ main(async () => {
     await page.locator('#post-form button[type=submit]').click();
     const prepared = await page.locator('#post-out [data-sign]').waitFor({ timeout: 30000 }).then(() => true, () => false);
     check('Post a job: it prepares a post_job call for the visitor\'s wallet to sign', prepared && /0\.20 NEAR/.test(await page.locator('#post-out').innerText()), prepared ? '' : await page.locator('#post-out').innerText().catch(() => 'no output'));
-    check('Post a job: it names the agent that will bid, by the runner\'s own rule', prepared && /Summarizer<\/b> will bid/.test(await page.locator('#post-out').innerHTML()), prepared ? (await page.locator('#post-out p').first().innerText()).slice(0, 200) : '');
+    check('Post a job: it names the agent that will bid, by the runner\'s own rule', prepared && /Summarizer<\/b>.*will bid/.test(await page.locator('#post-out').innerHTML()), prepared ? (await page.locator('#post-out p').first().innerText()).slice(0, 200) : '');
     check('Post a job: it prints the same call as a near-cli command', prepared && (await page.locator('#post-out pre').innerText()).includes(`call-function as-transaction ${plan.guild} post_job`));
     await page.goto(`${base}/?t=${Date.now()}#swarm`, { waitUntil: 'load' });
     const landed = await page.locator('#real-flight .phase-name').first().waitFor({ timeout: 30000 }).then(() => true, () => false);
     check('The landing page lists the latest real jobs', landed && await page.locator('#real-flight li').count() === Math.min(5, jobs.length));
+    const newestPaid = jobs.filter(j => j.status === 'Paid').at(-1);
+    if (newestPaid && await page.locator('#replay').count() === 1) { // the front page replays one real job, step by step
+      const replayed = await page.locator('#replay li[data-s=done], #replay li[data-s=now]').first().waitFor({ timeout: 30000 }).then(() => true, () => false);
+      check(`The front page replays job ${newestPaid.id}, the newest paid job, with its real prices`, replayed && (await page.locator('#replay-title').innerText()).includes(`#${newestPaid.id}`)
+        && (await page.locator('#replay').innerText()).includes('NEAR escrowed'), replayed ? await page.locator('#replay-title').innerText() : 'no replay');
+    }
     await page.goto(`${base}/?t=${Date.now()}#simulation`, { waitUntil: 'load' });
     check('The simulation page says it is a simulation', /simulation/i.test(await page.locator('#truth').innerText()));
     check('No script error on the page', errors.length === 0, errors.join(' | '));

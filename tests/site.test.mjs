@@ -64,3 +64,25 @@ test('the example manifests pass the rules, and the example auditor underbids th
   assert.ok(mine.bid && house.bid, 'both auditors bid, so the job shows a real price contest');
   assert.ok(mine.priceYocto < house.priceYocto);
 });
+
+test('adaptive pricing: one step up per win, one down per loss, between the base price and the ceiling', async () => {
+  const { decideBid, auctionHistory, adaptiveSteps } = await import('../site/bid-rule.mjs'); const { manifestProblems } = await import('../site/manifest-rules.mjs');
+  const m = JSON.parse(read('agents/examples/adaptive-summarizer.json')); assert.deepEqual(manifestProblems(m), []);
+  const job = { description: 'Summarize this text.', bounty: '300000000000000000000000' }, funded = { balance: '500000000000000000000000' };
+  const at = history => Number(decideBid(m, job, funded, history).priceYocto / 10n ** 21n);
+  assert.equal(at([]), 40); assert.equal(at([true]), 44); assert.equal(at([true, true, false]), 44); assert.equal(at([false, false, false]), 40, 'never below its base price');
+  assert.equal(at(Array(30).fill(true)), 120, 'never above its ceiling');
+  assert.equal(adaptiveSteps([true, true, false, false, false, true]), 1);
+  assert.equal(Number(decideBid(m, { ...job, bounty: '50000000000000000000000' }, funded, Array(5).fill(true)).priceYocto / 10n ** 21n), 50, 'a small bounty is taken at the bounty, not refused');
+  assert.equal(decideBid(m, { ...job, bounty: '30000000000000000000000' }, funded, []).bid, false);
+  // Its history is read from the chain: only auctions it bid in that had a winner, oldest first.
+  const jobs = [{ id: 0, bidders: ['a', 'b'], winner: 'a' }, { id: 1, bidders: ['b'], winner: 'b' }, { id: 2, bidders: ['a'], winner: null }, { id: 3, bidders: ['a', 'b'], winner: 'b' }, { id: 4, bidders: ['a'], winner: 'a' }];
+  assert.deepEqual(auctionHistory(jobs, 'a', 4), [true, false]); assert.deepEqual(auctionHistory(jobs, 'a', 9), [true, false, true]);
+  // It looks back a fixed number of jobs, the same number wherever the rule runs, so the site and a runner that reads only recent jobs agree.
+  assert.deepEqual(auctionHistory(jobs, 'a', 62), [false, true]); assert.deepEqual(auctionHistory(jobs, 'a', 200), []);
+  // A fixed-price manifest is untouched by history, and an adaptive one must name a ceiling at or above its floor.
+  const fixed = JSON.parse(read('agents/workers/summarizer.json'));
+  assert.equal(decideBid(fixed, job, funded, [true, true, true]).priceYocto, decideBid(fixed, job, funded).priceYocto);
+  assert.ok(manifestProblems({ ...m, pricing: { floorNear: '0.04', adaptive: true } }).some(p => p.includes('ceilingNear')));
+  assert.ok(manifestProblems({ ...m, pricing: { floorNear: '0.04', ceilingNear: '0.03', adaptive: true } }).some(p => p.includes('ceilingNear')));
+});

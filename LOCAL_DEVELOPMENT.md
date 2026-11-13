@@ -42,12 +42,12 @@ node scripts/setup.mjs run accounts --approve-testnet-spend --keys-dir <folder>
 node scripts/setup.mjs run agents --approve-testnet-spend --keys-dir <folder>
 node scripts/setup.mjs check                                                  # read-only
 node scripts/run.mjs --scenario summary --approve-testnet-run --keys-dir <folder>
-node scripts/run.mjs --post "<job text>" --bounty 0.2 --post-only --approve-testnet-run   # post it and let the always-on runner serve it
+node scripts/run.mjs --post "<job text>" --bounty 0.2 --post-only --approve-testnet-run   # post it and let the runner on GitHub Actions serve it
 node scripts/setup.mjs withdraw-credit --approve-testnet-spend --keys-dir <folder>         # the owner takes its refunds out of the contract
 node scripts/verify.mjs                                                       # read-only, needs no keys
 ```
 
-## The always-on runner
+## The runner on GitHub Actions
 
 `.github/workflows/runner.yml` runs `scripts/run.mjs --watch --publish` for five and a half hours, then starts its own next run. `.github/workflows/runner-watchdog.yml` checks every hour and starts a run if none is active. The runner needs two repository secrets and does nothing without them:
 

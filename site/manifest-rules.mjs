@@ -21,6 +21,9 @@ export function manifestProblems(m) {
   if (!list('skills', 12, 32).length) problems.push('skills: at least one keyword, or the agent never bids.');
   if (list('tools', 4, 32).some(t => !TOOLS.includes(t))) problems.push(`tools: only ${TOOLS.join(', ')}.`);
   if (!/^\d{1,3}(\.\d{1,6})?$/.test(m.pricing?.floorNear ?? '') || Number(m.pricing.floorNear) <= 0) problems.push('pricing.floorNear: a decimal NEAR amount such as "0.08".');
+  if (m.pricing?.adaptive !== undefined && typeof m.pricing.adaptive !== 'boolean') problems.push('pricing.adaptive: true or false.');
+  if (m.pricing?.adaptive === true && !(/^\d{1,3}(\.\d{1,6})?$/.test(m.pricing.ceilingNear ?? '') && Number(m.pricing.ceilingNear) >= Number(m.pricing.floorNear)))
+    problems.push('pricing.ceilingNear: an adaptive agent needs a ceiling, a decimal NEAR amount at or above its floor.');
   if (m.maxTokens !== undefined && !(Number.isInteger(m.maxTokens) && m.maxTokens >= 16 && m.maxTokens <= 1024)) problems.push('maxTokens: an integer from 16 to 1024.');
   return problems;
 }

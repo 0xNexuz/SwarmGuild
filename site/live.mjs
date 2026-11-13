@@ -2,7 +2,7 @@
 // files the on-chain result URLs point to. Posting a job or adding an agent hands a transaction to the
 // visitor's own wallet through NEAR Connect; the site holds no key. Nothing here comes from the simulation.
 import { manifestProblems, MAX_MANIFEST_BYTES } from './manifest-rules.mjs';
-import { decideBid } from './bid-rule.mjs';
+import { auctionHistory, decideBid } from './bid-rule.mjs';
 import { addAgentCall, agentIdFor, cliCommand, isAccountId, nearToYocto, postJobCall, walletTransaction, withdrawCreditCall } from './tx.mjs';
 import nearConnect from './vendor/near-connect.js'; // a CommonJS package, bundled: its exports are on the default export
 const { NearConnector } = nearConnect;
@@ -115,7 +115,7 @@ function detailHtml(chain, job, d) {
   const abstained = [...(ev?.abstentions ?? []), ...(ev?.reviews ?? []).filter(x => x.vote === 'abstain')];
   const abst = abstained.length ? `<li class="stack"><span>${abstained.length} review call${abstained.length > 1 ? 's' : ''} gave no verdict, so no vote was cast</span><span class="why">${esc(abstained[0].report?.reasons?.[0] ?? '')}</span></li>` : '';
   const work = job.work ? `<li><span>Result hash on chain</span><span>${esc(job.work.result_hash.slice(0, 16))}…${tick(d.checks.result)}</span></li>
-    <li><span>TEE signing key</span><span>${esc(job.work.signing_address.slice(0, 12))}…</span></li><li><span>Model</span><span>${esc(job.work.model)}</span></li>${reviews}${abst}` : `<li><span>${SETTLED.includes(job.status) ? 'No work was submitted' : 'No work yet'}</span></li>`;
+    <li><span>TEE signing key</span><span>${esc(job.work.signing_address.slice(0, 12))}…</span></li><li><span>Model</span><span>${esc(job.work.model)}</span></li>${ev?.work?.independent && /^https:\/\//.test(job.work.result_url) ? `<li><span>Published by the agent itself</span><span><a href="${esc(job.work.result_url)}" target="_blank" rel="noopener">its own copy</a></span></li>` : ''}${reviews}${abst}` : `<li><span>${SETTLED.includes(job.status) ? 'No work was submitted' : 'No work yet'}</span></li>`;
   const step = text => text.split(' ').map(word => chain.agents.some(([a]) => a === word) ? agentName(chain, word) : word).join(' '); // account ids read better as agent names
   const txs = (ev?.txs ?? []).map(t => `<li><span>${esc(step(t.step))}</span><span>${txLink(t.txHash)}</span></li>`).join('') || `<li><span>${SETTLED.includes(job.status) ? 'The runner publishes these a few minutes after a job settles. Check back shortly.' : 'Listed here once the job settles.'}</span></li>`;
   const charges = (ev?.charges ?? []).map(c => `<li><span>${esc(agentName(chain, c.agent))}, ${esc(c.what)} call</span><span>${near(c.amountYocto, 6)} NEAR</span></li>`).join('');
@@ -135,10 +135,12 @@ export function mountLive($) {
     const facts = $('live-facts'), rows = $('live-jobs'), grid = $('live-agents'), band = $('live-band');
     if (!chain) {
       const text = error ? `Could not reach NEAR Testnet RPC from your browser (${esc(error.message)}). Retrying.` : 'Reading the contract from NEAR Testnet…';
-      rows.innerHTML = `<tr><td colspan="7" class="muted">${text}</td></tr>`; band.querySelector('.live-line').innerHTML = text; return;
+      rows.innerHTML = `<tr><td colspan="7" class="muted">${text}</td></tr>`; band.querySelector('.live-line').innerHTML = text;
+      for (const fn of listeners) fn(null);
+      return;
     }
     const st = chainStats(chain);
-    band.querySelector('.live-line').innerHTML = `<b>${st.jobs}</b> jobs posted · <b>${st.paid}</b> paid after review · <b>${st.rejected}</b> rejected · <b>${st.expired}</b> expired undecided · <b>${st.agents}</b> agents, ${st.hosted} hosted · read from ${esc(GUILD)} just now`;
+    band.querySelector('.live-line').innerHTML = `The newest paid job on ${esc(GUILD)}, step by step.`;
     facts.innerHTML = [['Contract account', link(`${EXPLORER}/address/${GUILD}`, GUILD)], ['Access keys on it', `${chain.keyCount}${chain.keyCount === 0 ? ' — nobody can change its code or move its funds by key' : ''}`],
       ['Code hash', esc(chain.codeHash)], ['Review panel', `${chain.config.reviewers.length} reviewer agents, ${chain.config.review_threshold} must agree`],
       ['Operator', esc(chain.config.operator)], ['Runner', '<span id="runner-state"></span>'], ['Read at', esc(chain.readAt.toLocaleTimeString())]].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
@@ -159,7 +161,37 @@ export function mountLive($) {
   }
 
   const PHASE_AT = { 'sealing bids': 0, 'revealing bids': 1, 'awaiting award': 2, 'agent working': 3, 'in review': 4 };
+  /* One real job, step by step, in the band under the hero. Every value is from the contract; the steps light up in turn. */
+  const replay = { key: '', at: 0, timer: null, bids: new Map() };
+  const still = matchMedia('(prefers-reduced-motion: reduce)');
+  function paintReplay() {
+    const items = [...$('replay').children], n = items.length;
+    items.forEach((li, i) => { li.dataset.s = !replay.key ? '' : still.matches || replay.at >= n ? 'done' : i < replay.at ? 'done' : i === replay.at ? 'now' : ''; });
+  }
+  async function renderReplay() {
+    const job = [...chain.jobs].reverse().find(j => j.status === 'Paid') ?? [...chain.jobs].reverse().find(j => j.status === 'Rejected');
+    if (!job) return;
+    const key = `${job.id}:${job.status}`;
+    if (replay.key === key) return;
+    if (!replay.bids.has(key)) {
+      try { replay.bids.set(key, await Promise.all(job.bidders.map(async agent => (await view('get_bid', { job_id: job.id, agent })).price))); } catch { return; }
+    }
+    const prices = replay.bids.get(key).filter(p => p !== null).map(BigInt).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const price = BigInt(job.price), paid = job.status === 'Paid', votes = job.reviews.map(r => (r.pass ? 'pass' : 'fail')).join(' · ');
+    const steps = [[`${near(job.bounty)} NEAR escrowed`, `by ${short(job.poster)}`], [`${job.bidders.length} sealed bid${job.bidders.length === 1 ? '' : 's'}`, '0.01 NEAR bond each'],
+      [`${prices.map(p => near(p)).join(' · ')} NEAR`, prices.length > 1 ? 'every price matched its hash' : 'the price matched its hash'], [agentName(chain, job.winner), `lowest, at ${near(price)} NEAR`],
+      ['Signed in the TEE', `result ${job.work.result_hash.slice(0, 10)}…`], [votes, paid ? `paid ${near(price - price / 10n)} NEAR` : 'refunded, bond slashed']];
+    [...$('replay').children].forEach((li, i) => { li.querySelector('b').textContent = steps[i][0]; li.querySelector('span').textContent = steps[i][1]; });
+    $('replay-title').textContent = `Job #${job.id}, replayed from NEAR Testnet`;
+    const openLink = $('replay-open'); openLink.textContent = `Open job #${job.id}: the work and the votes`; openLink.dataset.openJob = job.id;
+    replay.key = key; replay.at = 0; paintReplay();
+    replay.timer ??= setInterval(() => { if (document.hidden) return; replay.at = (replay.at + 1) % ($('replay').children.length + 3); paintReplay(); }, 1500); // three beats on the finished job, then again
+  }
+  $('replay-open').addEventListener('click', e => { const id = Number(e.currentTarget.dataset.openJob); if (Number.isInteger(id) && chain?.jobs[id]) { open = id; render(); openDetail(id); } });
+
   function renderLanding() {
+    if (!chain) return;
+    renderReplay();
     const flight = $('real-flight'), feed = $('real-feed'), track = $('track');
     const newest = [...chain.jobs].reverse();
     flight.innerHTML = newest.slice(0, 5).map(job => { const p = phase(job), at = PHASE_AT[p] ?? 5;
@@ -281,16 +313,20 @@ export function mountLive($) {
     return manifests.get(agent.spec_hash);
   }
   async function bidders(description, bountyNear) {
-    const names = [], skills = new Set();
+    const found = [], skills = new Set(); let independent = 0;
     const workers = chain ? chain.agents.filter(([id]) => !chain.config.reviewers.includes(id)) : [];
-    await Promise.all(workers.map(async ([, agent]) => {
+    await Promise.all(workers.map(async ([id, agent]) => {
+      // An agent that runs itself, outside the swarm's own runner, sets its own price and may not be online: its public manifest promises nothing.
+      if (!agent.hosted && agent.backer !== OWNER) { independent++; return; }
       try {
         const manifest = await manifestOf(agent);
         for (const skill of manifest.skills ?? []) skills.add(skill);
-        if (decideBid(manifest, { description, bounty: nearToYocto(bountyNear) }, agent).bid) names.push(agent.name);
-      } catch { /* the runner refuses an agent whose manifest cannot be read or has changed, so it will not bid */ }
+        // An adaptive agent's price depends on how its past auctions went, which is on chain too.
+        const decision = decideBid(manifest, { description, bounty: nearToYocto(bountyNear) }, agent, auctionHistory(chain.jobs, id, chain.jobs.length));
+        if (decision.bid) found.push({ name: agent.name, price: decision.priceYocto });
+      } catch { /* a manifest that cannot be read is not hosted, so that agent will not bid */ }
     }));
-    return { names: names.sort(), skills: [...skills].sort() };
+    return { found: found.sort((x, y) => (x.price < y.price ? -1 : x.price > y.price ? 1 : x.name.localeCompare(y.name))), skills: [...skills].sort(), independent };
   }
 
   const needAccount = out => { const id = account(); if (isAccountId(id) && id.endsWith('.testnet')) return id; out.hidden = false; out.innerHTML = '<p class="bad">Connect your wallet, or enter your NEAR Testnet account, for example you.testnet.</p>'; return null; };
@@ -300,10 +336,11 @@ export function mountLive($) {
     const description = String(data.get('description')).trim(); const bounty = String(data.get('bounty')).trim();
     if (!description || description.length > 2000 || !(Number(bounty) >= 0.05)) { out.hidden = false; out.innerHTML = '<p class="bad">Describe the job in up to 2,000 characters and offer at least 0.05 NEAR.</p>'; return; }
     out.hidden = false; out.innerHTML = '<p class="muted">Checking which agents will bid…</p>';
-    const { names, skills } = await bidders(description, bounty);
-    const who = names.length
-      ? `${names.map(n => `<b>${esc(n)}</b>`).join(', ').replace(/, (?=[^,]*$)/, ' and ')} will bid. Bids seal for two minutes, then the work and the review take about two more.`
-      : `<span class="bad">No agent on chain bids on this job, so it would be cancelled and the bounty returned to you as credit.</span> Agents bid when the job mentions one of their skills${skills.length ? `: ${esc(skills.join(', '))}` : ''}, and when the bounty covers their floor price.`;
+    const { found, skills, independent } = await bidders(description, bounty);
+    const also = independent ? ` ${independent} independent agent${independent > 1 ? 's' : ''} may bid too, at a price only ${independent > 1 ? 'they know' : 'it knows'}.` : '';
+    const who = found.length
+      ? `${found.map(f => `<b>${esc(f.name)}</b> at ${near(f.price)} NEAR`).join(', ').replace(/, (?=[^,]*$)/, ' and ')} will bid.${also} Bids seal for two minutes, then the work and the review take about two more.`
+      : `<span class="bad">No agent with public rules is set to bid on this job${independent ? '' : ', so it would be cancelled and the bounty returned to you as credit'}.</span>${also} Agents bid when the job mentions one of their skills${skills.length ? `: ${esc(skills.join(', '))}` : ''}, and when the bounty covers their floor price.`;
     const offline = /^(offline|not started)/.test(runner) ? ' <span class="bad">The runner that hosts the agents is offline right now, so nobody will bid until it is back.</span>' : '';
     offer(out, postJobCall(GUILD, id, description, bounty), `This posts your job with <b>${esc(bounty)} NEAR</b> held by the contract. ${who}${offline}`);
   });
@@ -372,6 +409,7 @@ export function mountLive($) {
 
   return {
     get chain() { return chain; },
+    get error() { return error; },
     onChange: fn => listeners.add(fn),
     refresh,
     /** Reads now, then every 30 seconds, or every 6 while a job is in progress, so it moves on screen. */
