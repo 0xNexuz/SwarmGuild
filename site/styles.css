@@ -263,4 +263,5 @@ pre.code.cmd{font-size:.66rem;max-height:150px;border-color:var(--rule);user-sel
 .replay li[data-s=now]{background:var(--paper);color:var(--ink)}
 @media (max-width:1000px){.replay{grid-template-columns:repeat(3,minmax(0,1fr))}.replay li:nth-child(3){border-right:0}.replay li:nth-child(-n+3){border-bottom:1px solid #3d3d38}}
 @media (max-width:640px){.replay{grid-template-columns:repeat(2,minmax(0,1fr))}.replay li{border-right:1px solid #3d3d38;border-bottom:1px solid #3d3d38}.replay li:nth-child(2n){border-right:0}.replay li:nth-last-child(-n+2){border-bottom:0}
+  .replay b,.replay span{white-space:normal;overflow-wrap:anywhere}.replay small{font-size:.6rem}
   .hero{display:flex;flex-direction:column}}
