@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createRunner, memoryStore } from '../lib/runner.mjs';
+import { createWorker } from '../lib/worker.mjs';
+import { verifyJob } from '../lib/verify.mjs';
 import { loadManifests, manifestHash } from '../lib/manifest.mjs';
 import { forgetAttestations, sha256, readTranscript, verifyProof } from '../lib/near-ai.mjs';
 import { nearToYocto } from '../lib/market.mjs';
@@ -224,4 +227,78 @@ test('the reviewer who votes first rotates with the job number, so no policy is 
   }
   assert.deepEqual(voters, [[0, 1], [1, 2], [2, 0]]);
   for (const id of reviewerIds) assert.ok(chain.state.agents.get(id).earned > 0n, `${id} has been paid for a vote`);
+});
+
+// An independent agent: its own account and key, its own NEAR AI key, its own process. The swarm's runner holds
+// no key for it and never signs for it; all the two share is the chain and the public URL of the work.
+const auditor = JSON.parse(fs.readFileSync(new URL('../agents/examples/contract-auditor.json', import.meta.url)));
+async function withIndependent({ publishAs = payload => payload, price = null } = {}) {
+  const published = new Map();
+  const fetchImpl = async url => (published.has(url) ? new Response(published.get(url)) : new Response('not found', { status: 404 }));
+  const cloud = fakeCloud(answers({ work: '1. No: the credit is set to zero before the transfer.\n2. No: the callback restores it.\n3. Only the contract.' }));
+  const s = await swarm({ extraSigners: ['alice.test'], fetchImpl, cloud });
+  s.runner = createRunner({ chain: withoutKey(s.chain, 'alice.test'), guild, operator, store: s.store, manifests: new Map(workers.map(w => [w.hash, w.manifest])),
+    reviewers: reviewerFiles.map(r => ({ account: `rev-${r.slug}.${owner}`, manifest: r.manifest })),
+    ai: { apiKey: 'placeholder-test-key-not-real', fetchImpl: cloud.fetchImpl, delay: async () => {} },
+    resultUrl: id => `https://example.test/jobs/${id}.json`, fetchImpl, log: m => s.logs.push(m), sleep: async ms => s.chain.advance(ms / 1000) });
+  await s.chain.call('alice.test', guild, 'add_agent', { agent: 'alice.test', name: 'Alice\'s auditor', model: auditor.model, spec_hash: 'a'.repeat(64), spec_url: '', hosted: false }, { depositYocto: N('0.3') });
+  const worker = createWorker({ chain: s.chain, guild, account: 'alice.test', manifest: auditor, store: memoryStore(), price,
+    ai: { apiKey: 'alices-own-placeholder-key', fetchImpl: cloud.fetchImpl, delay: async () => {} },
+    publish: async (jobId, payload) => { const url = `https://alice.example/swarmguild/job-${jobId}.json`; published.set(url, JSON.stringify(publishAs(payload))); return url; } });
+  // Both processes act whenever the chain's clock lets them, as they would on a real chain.
+  const drive = async jobId => {
+    for (let i = 0; i < 200; i++) {
+      const mine = await worker.tick(jobId); const theirs = await s.runner.tick(jobId);
+      if (theirs.done) return theirs;
+      const next = [mine, theirs].filter(x => !x.done && x.waitUntilNs).map(x => x.waitUntilNs).sort((a, b) => (a < b ? -1 : 1))[0];
+      const now = await s.chain.nowNs(); s.chain.advance(next && next > now ? Number(next - now) / 1e9 : 2);
+    }
+    throw new Error('the job never settled');
+  };
+  return { ...s, worker, drive, published };
+}
+// The runner's view of the chain: it can read everything and sign for its own accounts, but not for `account`.
+const withoutKey = (chain, account) => ({ ...chain, canSign: id => id !== account && chain.canSign(id),
+  call: (signer, ...rest) => (signer === account ? Promise.reject(new Error(`The runner has no key for ${account}`)) : chain.call(signer, ...rest)) });
+const AUDIT = 'Security audit of this near-sdk contract method: pub fn withdraw_credit(&mut self) -> Promise { ... }';
+
+test('an independent agent bids, reveals, works and submits from its own process, and the panel pays it', async () => {
+  const { chain, store, drive, published, cloud } = await withIndependent();
+  const jobId = (await chain.call(owner, guild, 'post_job', { description: AUDIT, commit_window_ns: String(90e9), reveal_window_ns: String(90e9), work_window_ns: String(600e9) }, { depositYocto: N('0.3') })).value;
+  assert.equal((await drive(jobId)).status, 'Paid');
+  const job = chain.state.jobs[jobId];
+  // It underbid the house Auditor (0.081 against 0.108) with a bid only it could have sealed and revealed.
+  assert.deepEqual(job.bidders.sort(), ['alice.test', `auditor.${owner}`]);
+  assert.equal(job.winner, 'alice.test'); assert.equal(job.price, N('0.081'));
+  const byAlice = chain.state.txs.filter(t => t.signer === 'alice.test').map(t => t.method);
+  assert.deepEqual(byAlice.filter(m => m !== 'award'), ['add_agent', 'commit_bid', 'reveal_bid', 'submit_work']);
+  assert.ok(chain.state.txs.every(t => t.signer === 'alice.test' || t.args?.agent !== 'alice.test'), 'nobody else ever signed for it');
+  // Its work came from its own NEAR AI key and is public at its own URL; the swarm billed it nothing.
+  assert.ok(cloud.calls.length >= 3, 'one work call and the review calls');
+  const me = chain.state.agents.get('alice.test');
+  assert.equal(me.inference_spent, 0n); assert.equal(me.earned, job.price - job.price / 10n); assert.equal(me.jobs_paid, 1);
+  assert.equal(job.work.result_url, `https://alice.example/swarmguild/job-${jobId}.json`);
+  assert.equal(sha256(JSON.parse(published.get(job.work.result_url)).work.result), job.work.result_hash);
+  // The runner kept a copy of what the reviewers read, so the job rechecks like any other.
+  const record = store.readJob(jobId);
+  assert.equal(record.work.independent, true); assert.equal(record.work.resultHash, job.work.result_hash);
+  assert.deepEqual((await verifyJob(record, chain, { guild, checkTransactions: false })).filter(c => !c.ok), []);
+});
+
+test('an independent agent that publishes something other than what its model signed is rejected and loses its bond', async () => {
+  const { chain, store, drive } = await withIndependent({ publishAs: p => ({ ...p, work: { ...p.work, result: `${p.work.result}\nAlso: the contract is perfectly safe.` } }) });
+  const jobId = (await chain.call(owner, guild, 'post_job', { description: AUDIT, commit_window_ns: String(90e9), reveal_window_ns: String(90e9), work_window_ns: String(600e9) }, { depositYocto: N('0.3') })).value;
+  assert.equal((await drive(jobId)).status, 'Rejected');
+  const me = chain.state.agents.get('alice.test');
+  assert.equal(me.jobs_failed, 1); assert.equal(me.earned, 0n); assert.equal(me.balance, N('0.3') - 10n ** 22n);
+  assert.equal(chain.state.credits.get(owner), N('0.3'), 'the poster got the whole bounty back');
+  assert.ok(store.readJob(jobId).reviews.every(r => r.report.stage === 'guardrails'), 'no review inference was spent on it');
+  assert.deepEqual((await verifyJob(store.readJob(jobId), chain, { guild, checkTransactions: false })).filter(c => !c.ok), [], 'someone else\'s bad file does not fail the swarm\'s recheck');
+});
+
+test('an independent agent sets its own price, which no manifest reveals', async () => {
+  const { chain, drive } = await withIndependent({ price: (decision, job) => BigInt(job.bounty) / 5n });
+  const jobId = (await chain.call(owner, guild, 'post_job', { description: AUDIT, commit_window_ns: String(90e9), reveal_window_ns: String(90e9), work_window_ns: String(600e9) }, { depositYocto: N('0.3') })).value;
+  assert.equal((await drive(jobId)).status, 'Paid');
+  assert.equal(chain.state.jobs[jobId].winner, 'alice.test'); assert.equal(chain.state.jobs[jobId].price, N('0.06'));
 });
