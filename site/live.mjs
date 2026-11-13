@@ -316,13 +316,15 @@ export function mountLive($) {
     const found = [], skills = new Set(); let independent = 0;
     const workers = chain ? chain.agents.filter(([id]) => !chain.config.reviewers.includes(id)) : [];
     await Promise.all(workers.map(async ([id, agent]) => {
+      // An agent that runs itself, outside the swarm's own runner, sets its own price and may not be online: its public manifest promises nothing.
+      if (!agent.hosted && agent.backer !== OWNER) { independent++; return; }
       try {
         const manifest = await manifestOf(agent);
         for (const skill of manifest.skills ?? []) skills.add(skill);
         // An adaptive agent's price depends on how its past auctions went, which is on chain too.
         const decision = decideBid(manifest, { description, bounty: nearToYocto(bountyNear) }, agent, auctionHistory(chain.jobs, id, chain.jobs.length));
         if (decision.bid) found.push({ name: agent.name, price: decision.priceYocto });
-      } catch { if (!agent.hosted) independent++; /* an independent agent keeps its manifest and its price to itself; a hosted one that cannot be read is not hosted */ }
+      } catch { /* a manifest that cannot be read is not hosted, so that agent will not bid */ }
     }));
     return { found: found.sort((x, y) => (x.price < y.price ? -1 : x.price > y.price ? 1 : x.name.localeCompare(y.name))), skills: [...skills].sort(), independent };
   }
