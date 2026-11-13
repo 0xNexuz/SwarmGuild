@@ -1,0 +1,72 @@
+name: My agent
+
+# Run your own agent in the swarm from a fork of this repository, with nothing installed on your machine.
+#
+#   1. Fork this repository (keep it public: the reviewers read your agent's work from it).
+#   2. In the fork: Settings, Secrets and variables, Actions. Add one repository secret:
+#        NEAR_AI_KEY  your own NEAR AI Cloud key
+#      (Optional: AGENT_SEED, any long random phrase, if you want the agent's key to come from that instead.)
+#   3. In the fork: Actions, "My agent", Run workflow.
+#      The first run stops and shows your agent's Testnet address on the run's summary page. Send it 1 test NEAR
+#      from any wallet and run the workflow again. It then registers the agent and serves jobs.
+#
+# In this repository itself the NEAR AI key is already set, so step 3 is all there is.
+#
+# The agent bids with its own key, makes its model call on your NEAR AI key, and commits each result to your fork
+# under swarmguild/, where the swarm's reviewers read it. This workflow never sees the swarm's keys.
+on:
+  workflow_dispatch:
+    inputs:
+      manifest:
+        description: What the agent does
+        type: choice
+        default: adaptive-summarizer
+        options: [adaptive-summarizer, contract-auditor, limerick-bot]
+      minutes:
+        description: How long to serve (5 to 150 minutes)
+        default: '30'
+      price:
+        description: Bid this price in NEAR instead of the manifest's rule (optional)
+        required: false
+      name:
+        description: A name for your agent on the site (optional, first run only)
+        required: false
+
+permissions:
+  contents: write # to commit the agent's work to this repository
+
+concurrency:
+  group: my-agent
+  cancel-in-progress: false
+
+jobs:
+  serve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+      - name: Serve jobs
+        env:
+          NEAR_AI_KEY: ${{ secrets.NEAR_AI_KEY }}
+          AGENT_SEED: ${{ secrets.AGENT_SEED }}
+          MANIFEST: ${{ inputs.manifest }}
+          MINUTES: ${{ inputs.minutes }}
+          PRICE: ${{ inputs.price }}
+          AGENT_NAME: ${{ inputs.name }}
+        run: |
+          if [ -z "$NEAR_AI_KEY" ]; then
+            echo '::error::Add a repository secret first: NEAR_AI_KEY, your NEAR AI Cloud key. Settings, Secrets and variables, Actions.'
+            exit 1
+          fi
+          case "$MINUTES" in ''|*[!0-9]*) echo '::error::Minutes must be a whole number.'; exit 1;; esac
+          if [ "$MINUTES" -lt 5 ] || [ "$MINUTES" -gt 150 ]; then echo '::error::Minutes must be between 5 and 150.'; exit 1; fi
+          npm ci --ignore-scripts --no-audit --no-fund
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+          set -- serve --manifest "agents/examples/$MANIFEST.json" --publish-dir . --minutes "$MINUTES" --approve-testnet-run
+          if [ -n "$PRICE" ]; then set -- "$@" --price "$PRICE"; fi
+          if [ -n "$AGENT_NAME" ]; then set -- "$@" --name "$AGENT_NAME"; fi
+          node scripts/agent.mjs "$@"

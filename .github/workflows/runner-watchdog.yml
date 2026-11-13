@@ -12,6 +12,8 @@ permissions:
 
 jobs:
   check:
+    # A fork has no runner keys, so the hourly start is for this repository only. A fork can still start it by hand.
+    if: github.event_name != 'schedule' || github.repository == '0xNexuz/SwarmGuild'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

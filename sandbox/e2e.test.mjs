@@ -7,7 +7,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'near-workspaces';
-import { actions, ensureKey, rpcChain } from '../lib/chain.mjs';
+import { actions, ensureKey, keyFromSeed, rpcChain } from '../lib/chain.mjs';
 import { loadManifests, manifestHash } from '../lib/manifest.mjs';
 import { nearToYocto as N } from '../lib/market.mjs';
 import { forgetAttestations } from '../lib/near-ai.mjs';
@@ -117,10 +117,13 @@ test('SwarmGuild on NEAR Sandbox: deploy, run jobs, add an outside agent, verify
   });
 
   await t.test('an independent agent with its own key and process outbids the house Auditor, is paid, and is billed nothing', async () => {
-    const bob = await root.createSubAccount('bob', { initialBalance: (N('5')).toString() });
-    const bobKeys = path.join(tmp, 'bob-keys'); fs.mkdirSync(bobKeys);
-    const pair = await bob.getKey();
-    fs.writeFileSync(path.join(bobKeys, `${bob.accountId}.json`), JSON.stringify({ account_id: bob.accountId, public_key: pair.getPublicKey().toString(), private_key: pair.toString() }));
+    // Its key comes from a secret phrase, and its account is the implicit one that key names: it exists as soon as
+    // someone sends it NEAR. This is what `scripts/agent.mjs serve` and the "My agent" workflow do on Testnet.
+    const bobKeys = path.join(tmp, 'bob-keys');
+    const bob = { accountId: keyFromSeed(bobKeys, 'a long secret phrase only bob knows, 0123456789') };
+    assert.match(bob.accountId, /^[0-9a-f]{64}$/); assert.equal((await chain.account(bob.accountId)).found, false);
+    await chain.send(owner, bob.accountId, [actions.transfer(N('5'))]);
+    assert.equal((await chain.account(bob.accountId)).found, true, 'a transfer created the account');
     const bobChain = await rpcChain({ networkId: 'sandbox', nodeUrl, keysDir: bobKeys });
     assert.equal(chain.canSign(bob.accountId), false, 'the swarm\'s runner holds no key for it');
     const bytes = fs.readFileSync(path.join(agentsDir, 'examples', 'contract-auditor.json')); const manifest = JSON.parse(bytes);
