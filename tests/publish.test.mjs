@@ -30,6 +30,14 @@ test('an independent agent publishes its work by pushing to its own repository, 
     assert.equal(waits.length, 1, 'it did not return the URL until the file could be fetched');
     assert.deepEqual(JSON.parse(execFileSync('git', ['-C', bare, 'show', 'main:swarmguild/job-7.json'], { encoding: 'utf8' })), payload);
     assert.equal(await publish(7, payload), url, 'publishing the same work again is harmless');
+    // Someone else pushes to the same branch in the meantime (the swarm's runner does, in a shared repository).
+    const other = path.join(tmp, 'other'); execFileSync('git', ['clone', '-q', '-b', 'main', bare, other]);
+    for (const [k, v] of [['user.name', 'runner'], ['user.email', 'runner@example.test'], ['commit.gpgsign', 'false']]) git(other, 'config', k, v);
+    fs.writeFileSync(path.join(other, 'evidence.json'), '{}\n'); git(other, 'add', '.'); git(other, 'commit', '-q', '-m', 'evidence'); git(other, 'push', '-q', 'origin', 'HEAD:main');
+    const next = await publish(8, { ...payload, jobId: 8 });
+    assert.match(next, /swarmguild\/job-8\.json$/);
+    assert.equal(execFileSync('git', ['-C', bare, 'show', 'main:evidence.json'], { encoding: 'utf8' }), '{}\n', 'their commit is kept');
+    assert.equal(JSON.parse(execFileSync('git', ['-C', bare, 'show', 'main:swarmguild/job-8.json'], { encoding: 'utf8' })).jobId, 8, 'and the work went on top of it');
     git(clone, 'config', 'remote.origin.url', 'https://gitlab.example/alice/agent-work.git');
     assert.throws(() => gitPublisher(clone), /GitHub repository/);
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
