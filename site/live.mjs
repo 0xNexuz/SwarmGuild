@@ -347,6 +347,7 @@ export function mountLive($) {
   $('credit').querySelector('button').addEventListener('click', () => { const out = $('post-out'); const id = needAccount(out); if (id) offer(out, withdrawCreditCall(GUILD, id), 'This moves your credit from the contract to your account.'); });
 
   $('use-example').addEventListener('click', () => { $('agent-form').querySelector('[name=url]').value = `${RAW}/agents/examples/limerick-bot.json`; });
+  $('use-example-adaptive').addEventListener('click', () => { $('agent-form').querySelector('[name=url]').value = `${RAW}/agents/examples/adaptive-summarizer.json`; });
 
   $('agent-form').addEventListener('submit', async e => {
     e.preventDefault(); const out = $('agent-out'); const data = new FormData(e.target); const id = needAccount(out); if (!id) return;
