@@ -12,6 +12,7 @@ import { loadManifests } from '../lib/manifest.mjs';
 import { nearToYocto, yoctoToNear } from '../lib/market.mjs';
 import { attestedKeys } from '../lib/near-ai.mjs';
 import { createRunner, fileStore } from '../lib/runner.mjs';
+import { nearAccountTool } from '../lib/tools.mjs';
 import { at, EVIDENCE_DIR, keysDir, main, nearAiKey, parseArgs, RAW_BASE, readPlan, testnet } from './common.mjs';
 
 main(async () => {
@@ -19,7 +20,7 @@ main(async () => {
   if (flags['approve-testnet-run'] !== true) throw new Error('This sends Testnet transactions and spends NEAR AI credit. Add --approve-testnet-run once the owner has approved it.');
   const plan = readPlan(); const chain = await testnet(flags); const apiKey = nearAiKey();
   const workers = loadManifests(at('agents', 'workers')); const reviewers = loadManifests(at('agents', 'reviewers'));
-  const ai = { apiKey, tools: { near_account: id => chain.account(id) } };
+  const ai = { apiKey, tools: { near_account: nearAccountTool(chain) } };
   await attestedKeys(workers[0].manifest.model, ai); // fail early if NEAR AI or its attestation is unreachable
   const runner = createRunner({ chain, guild: plan.guild, operator: plan.operator, ai,
     manifests: new Map(workers.map(w => [w.hash, w.manifest])),

@@ -21,6 +21,7 @@ import { nearToYocto, yoctoToNear } from '../lib/market.mjs';
 import { attestedKeys } from '../lib/near-ai.mjs';
 import { gitPublisher } from '../lib/publish.mjs';
 import { fileStore } from '../lib/runner.mjs';
+import { nearAccountTool } from '../lib/tools.mjs';
 import { createWorker } from '../lib/worker.mjs';
 import { ARCHIVAL_URLS, keysDir, main, nearAiKey, parseArgs, readPlan, RPC_URLS } from './common.mjs';
 
@@ -85,7 +86,7 @@ main(async () => {
     const c = await chain(); const apiKey = nearAiKey();
     if (!c.canSign(account)) throw new Error(`The keys folder has no key for ${account}.`);
     if (!await c.view(plan.guild, 'get_agent', { agent: account })) throw new Error(`${account} is not registered yet. Run the register command first.`);
-    const ai = { apiKey, tools: { near_account: id => c.account(id) } };
+    const ai = { apiKey, tools: { near_account: nearAccountTool(c) } };
     await attestedKeys(manifest.model, ai); // fail early if NEAR AI is unreachable or the key is wrong
     const worker = createWorker({ chain: c, guild: plan.guild, account, manifest, ai, publish: gitPublisher(path.resolve(flags['publish-dir'])),
       store: fileStore({ evidenceDir: dir, secretsFile: path.join(dir, 'bid-secrets.json') }),

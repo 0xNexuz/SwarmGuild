@@ -13,6 +13,7 @@ import { nearToYocto as N } from '../lib/market.mjs';
 import { forgetAttestations } from '../lib/near-ai.mjs';
 import { createRunner, fileStore } from '../lib/runner.mjs';
 import { buildPlan, checkDeployment, runStage, STAGES } from '../lib/setup.mjs';
+import { nearAccountTool } from '../lib/tools.mjs';
 import { verifyJob } from '../lib/verify.mjs';
 import { createWorker } from '../lib/worker.mjs';
 import { fakeCloud } from '../tests/fake-cloud.mjs';
@@ -69,7 +70,7 @@ test('SwarmGuild on NEAR Sandbox: deploy, run jobs, add an outside agent, verify
   const runner = createRunner({ chain, guild: plan.guild, operator: plan.operator, store,
     manifests: new Map(workers.map(w => [w.hash, w.manifest])),
     reviewers: reviewers.map(r => ({ account: `rev-${r.slug}.${owner}`, manifest: r.manifest })),
-    ai: { apiKey: 'placeholder-test-key-not-real', fetchImpl: cloud.fetchImpl, delay: async () => {}, tools: { near_account: id => chain.account(id) } },
+    ai: { apiKey: 'placeholder-test-key-not-real', fetchImpl: cloud.fetchImpl, delay: async () => {}, tools: { near_account: nearAccountTool(chain) } },
     resultUrl: id => `https://example.test/jobs/${id}.json`, fetchImpl: async url => new Response(published.get(url) ?? aliceManifest), log: line => console.log(line) });
   const windows = { commitSeconds: 25, revealSeconds: 25, workSeconds: 300 };
   const agent = id => chain.view(plan.guild, 'get_agent', { agent: id });
@@ -125,7 +126,7 @@ test('SwarmGuild on NEAR Sandbox: deploy, run jobs, add an outside agent, verify
     const bytes = fs.readFileSync(path.join(agentsDir, 'examples', 'contract-auditor.json')); const manifest = JSON.parse(bytes);
     await bobChain.call(bob.accountId, plan.guild, 'add_agent', { agent: bob.accountId, name: 'Bob\'s auditor', model: manifest.model, spec_hash: manifestHash(bytes), spec_url: '', hosted: false }, { depositYocto: N('0.3') });
     const worker = createWorker({ chain: bobChain, guild: plan.guild, account: bob.accountId, manifest,
-      ai: { apiKey: 'bobs-own-placeholder-key', fetchImpl: cloud.fetchImpl, delay: async () => {}, tools: { near_account: id => bobChain.account(id) } },
+      ai: { apiKey: 'bobs-own-placeholder-key', fetchImpl: cloud.fetchImpl, delay: async () => {}, tools: { near_account: nearAccountTool(bobChain) } },
       store: fileStore({ evidenceDir: path.join(tmp, 'bob-evidence'), secretsFile: path.join(bobKeys, 'bid-secrets.json') }),
       publish: async (jobId, payload) => { const url = `https://bob.example/swarmguild/job-${jobId}.json`; published.set(url, JSON.stringify(payload)); return url; },
       log: line => console.log(`[bob] ${line}`) });
