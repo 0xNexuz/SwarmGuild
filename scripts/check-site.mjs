@@ -66,6 +66,10 @@ main(async () => {
       check(`The front page replays job ${newestPaid.id}, the newest paid job, with its real prices`, replayed && (await page.locator('#replay-title').innerText()).includes(`#${newestPaid.id}`)
         && (await page.locator('#replay').innerText()).includes('NEAR escrowed'), replayed ? await page.locator('#replay-title').innerText() : 'no replay');
     }
+    if (await page.locator('#demo-video').count() === 1) { // the demo video is served from the site itself
+      const video = await fetch(`${base}/media/demo.mp4`, { method: 'HEAD', signal: AbortSignal.timeout(20000) }).then(r => ({ ok: r.ok, type: r.headers.get('content-type') ?? '' }), e => ({ ok: false, type: e.message }));
+      check('The front page has the demo video, and its file is served', video.ok && video.type.startsWith('video/'), video.type);
+    }
     await page.goto(`${base}/?t=${Date.now()}#simulation`, { waitUntil: 'load' });
     check('The simulation page says it is a simulation', /simulation/i.test(await page.locator('#truth').innerText()));
     check('No script error on the page', errors.length === 0, errors.join(' | '));
