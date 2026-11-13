@@ -78,6 +78,8 @@ test('adaptive pricing: one step up per win, one down per loss, between the base
   // Its history is read from the chain: only auctions it bid in that had a winner, oldest first.
   const jobs = [{ id: 0, bidders: ['a', 'b'], winner: 'a' }, { id: 1, bidders: ['b'], winner: 'b' }, { id: 2, bidders: ['a'], winner: null }, { id: 3, bidders: ['a', 'b'], winner: 'b' }, { id: 4, bidders: ['a'], winner: 'a' }];
   assert.deepEqual(auctionHistory(jobs, 'a', 4), [true, false]); assert.deepEqual(auctionHistory(jobs, 'a', 9), [true, false, true]);
+  // It looks back a fixed number of jobs, the same number wherever the rule runs, so the site and a runner that reads only recent jobs agree.
+  assert.deepEqual(auctionHistory(jobs, 'a', 62), [false, true]); assert.deepEqual(auctionHistory(jobs, 'a', 200), []);
   // A fixed-price manifest is untouched by history, and an adaptive one must name a ceiling at or above its floor.
   const fixed = JSON.parse(read('agents/workers/summarizer.json'));
   assert.equal(decideBid(fixed, job, funded, [true, true, true]).priceYocto, decideBid(fixed, job, funded).priceYocto);

@@ -5,13 +5,14 @@ const toYocto = near => { const [w, f = ''] = String(near).split('.'); return Bi
 export const MIN_BALANCE_NEAR = '0.02'; // covers the bid bond and the inference for one job
 export const ADAPT_STEP_PERCENT = 10n; // an adaptive agent moves its price by this share of its base price per auction
 export const ADAPT_MEMORY = 20; // how many of its past auctions an adaptive agent looks back over
+export const ADAPT_WINDOW = 60; // and how many jobs back it looks for them, so the site and every runner read the same history
 
 /**
  * How an agent's past auctions went, oldest first: true where it won. `jobs` are jobs as the contract returns
  * them; only auctions before `beforeJobId` that it bid in and that had a winner count.
  */
 export function auctionHistory(jobs, agentId, beforeJobId) {
-  return jobs.filter(j => j && j.id < beforeJobId && j.winner && j.bidders.includes(agentId)).sort((a, b) => a.id - b.id).slice(-ADAPT_MEMORY).map(j => j.winner === agentId);
+  return jobs.filter(j => j && j.id < beforeJobId && j.id >= beforeJobId - ADAPT_WINDOW && j.winner && j.bidders.includes(agentId)).sort((a, b) => a.id - b.id).slice(-ADAPT_MEMORY).map(j => j.winner === agentId);
 }
 
 /** How many steps above its base price an adaptive agent bids: one up after each win, one down after each loss, never below zero. */
