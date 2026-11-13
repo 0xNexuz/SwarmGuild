@@ -86,3 +86,7 @@
 {"at":"2026-11-13T21:09:21.064Z","txHash":"tL5wCakJfnfv6XPeZzeLTRJFy4xbeeUNF26YghGJbcm","signerId":"rev-safety.swarmguild-99c7a546.testnet","receiverId":"guild.swarmguild-99c7a546.testnet","label":"review"}
 {"at":"2026-11-13T21:09:51.245Z","txHash":"6kd1AENDX1BvSuPFEkZMpN59hZan7nUWAwjknNQHfj1v","signerId":"operator.swarmguild-99c7a546.testnet","receiverId":"guild.swarmguild-99c7a546.testnet","label":"charge_inference"}
 {"at":"2026-11-13T21:09:55.167Z","txHash":"8stxrifUL7z4Mn36EJneXESKJtp1NUaXwzA8yZ1PRtNj","signerId":"rev-quality.swarmguild-99c7a546.testnet","receiverId":"guild.swarmguild-99c7a546.testnet","label":"review"}
+{"at":"2026-11-13T21:15:44.342Z","txHash":"Ev9tFkSvgVseRCPYwCZGYTpLacX5dP6UhhWpk5wt36aA","signerId":"summarizer.swarmguild-99c7a546.testnet","receiverId":"guild.swarmguild-99c7a546.testnet","label":"commit_bid"}
+{"at":"2026-11-13T21:17:44.214Z","txHash":"7QsrkPGdorVkTJHbqsG4g7JX2ro2RL1AtJ56cv6HMVk9","signerId":"summarizer.swarmguild-99c7a546.testnet","receiverId":"guild.swarmguild-99c7a546.testnet","label":"reveal_bid"}
+{"at":"2026-11-13T21:17:48.539Z","txHash":"BELJZZoDJpLbKTxMFQVk8dgcZMbrmJnDNFkXx744WfTS","signerId":"operator.swarmguild-99c7a546.testnet","receiverId":"guild.swarmguild-99c7a546.testnet","label":"award"}
+{"at":"2026-11-13T21:27:55.721Z","txHash":"G92eq8KqN2Syut5aPv8Lsk2bWYRZDEEcrTcYdNhrBXWf","signerId":"operator.swarmguild-99c7a546.testnet","receiverId":"guild.swarmguild-99c7a546.testnet","label":"expire"}

@@ -1,0 +1,90 @@
+{
+  "jobId": 8,
+  "guild": "guild.swarmguild-99c7a546.testnet",
+  "network": "testnet",
+  "description": "Summarize this text: In a sealed-bid auction every bidder first publishes only a hash of their price. When the bidding window closes, each bidder reveals the price and a random salt, and anyone can check that they match the hash. The lowest valid price wins, and a bidder who never reveals loses a small bond.",
+  "poster": "calmroom6526.testnet",
+  "bountyYocto": "200000000000000000000000",
+  "txs": [
+    {
+      "step": "commit summarizer.swarmguild-99c7a546.testnet",
+      "signer": "summarizer.swarmguild-99c7a546.testnet",
+      "method": "commit_bid",
+      "txHash": "Ev9tFkSvgVseRCPYwCZGYTpLacX5dP6UhhWpk5wt36aA"
+    },
+    {
+      "step": "reveal summarizer.swarmguild-99c7a546.testnet",
+      "signer": "summarizer.swarmguild-99c7a546.testnet",
+      "method": "reveal_bid",
+      "txHash": "7QsrkPGdorVkTJHbqsG4g7JX2ro2RL1AtJ56cv6HMVk9"
+    },
+    {
+      "step": "award",
+      "signer": "operator.swarmguild-99c7a546.testnet",
+      "method": "award",
+      "txHash": "BELJZZoDJpLbKTxMFQVk8dgcZMbrmJnDNFkXx744WfTS"
+    },
+    {
+      "step": "expire late work",
+      "signer": "operator.swarmguild-99c7a546.testnet",
+      "method": "expire",
+      "txHash": "G92eq8KqN2Syut5aPv8Lsk2bWYRZDEEcrTcYdNhrBXWf"
+    }
+  ],
+  "bids": {
+    "auditor.swarmguild-99c7a546.testnet": {
+      "bid": false,
+      "reason": "No skill matches this job."
+    },
+    "explainer.swarmguild-99c7a546.testnet": {
+      "bid": false,
+      "reason": "No skill matches this job."
+    },
+    "summarizer.swarmguild-99c7a546.testnet": {
+      "bid": true,
+      "hosted": false,
+      "matched": [
+        "summarize"
+      ],
+      "commitTx": "Ev9tFkSvgVseRCPYwCZGYTpLacX5dP6UhhWpk5wt36aA",
+      "priceYocto": "60000000000000000000000",
+      "salt": "6879168dac20c95d3f3bcde472b8d89e",
+      "revealTx": "7QsrkPGdorVkTJHbqsG4g7JX2ro2RL1AtJ56cv6HMVk9"
+    },
+    "tamper-lab.swarmguild-99c7a546.testnet": {
+      "bid": false,
+      "reason": "No skill matches this job."
+    },
+    "limerick-bot.calmroom6526.testnet": {
+      "bid": false,
+      "reason": "No skill matches this job."
+    },
+    "contract-auditor.calmroom6526.testnet": {
+      "bid": false,
+      "reason": "No skill matches this job."
+    }
+  },
+  "work": null,
+  "reviews": [],
+  "charges": [],
+  "final": {
+    "id": 8,
+    "poster": "calmroom6526.testnet",
+    "description": "Summarize this text: In a sealed-bid auction every bidder first publishes only a hash of their price. When the bidding window closes, each bidder reveals the price and a random salt, and anyone can check that they match the hash. The lowest valid price wins, and a bidder who never reveals loses a small bond.",
+    "bounty": "200000000000000000000000",
+    "commit_end_ns": "1794604659715666878",
+    "reveal_end_ns": "1794604749715666878",
+    "work_window_ns": "600000000000",
+    "status": "Expired",
+    "bidders": [
+      "summarizer.swarmguild-99c7a546.testnet",
+      "9eb2bc53dcbed00028f735108566e79a75eb2d7b5a3b84e0ee79bcb38a200a7a"
+    ],
+    "winner": "9eb2bc53dcbed00028f735108566e79a75eb2d7b5a3b84e0ee79bcb38a200a7a",
+    "price": "44000000000000000000000",
+    "work_due_ns": "1794605269759627770",
+    "review_due_ns": null,
+    "work": null,
+    "reviews": []
+  }
+}
