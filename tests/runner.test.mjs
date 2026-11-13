@@ -213,3 +213,15 @@ test('an undecided job does not hold the always-on loop: it is parked, then expi
   chain.advance(3700);
   assert.deepEqual(await runner.watch({ minutes: 1, maxJobs: 1 }), [{ jobId, status: 'Expired' }]);
 });
+
+test('the reviewer who votes first rotates with the job number, so no policy is left out of the panel', async () => {
+  const { chain, runner } = await swarm();
+  const voters = [];
+  for (let i = 0; i < 3; i++) {
+    const jobId = await runner.postJob(owner, 'Give a summary of NEAR access keys.', N('0.3'));
+    assert.equal((await runner.runJob(jobId)).status, 'Paid');
+    voters.push(chain.state.jobs[jobId].reviews.map(r => reviewerIds.indexOf(r.reviewer)));
+  }
+  assert.deepEqual(voters, [[0, 1], [1, 2], [2, 0]]);
+  for (const id of reviewerIds) assert.ok(chain.state.agents.get(id).earned > 0n, `${id} has been paid for a vote`);
+});
