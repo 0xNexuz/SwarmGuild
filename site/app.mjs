@@ -11,7 +11,19 @@ let paused = false, speed = 3, timer = null;
 /* ---------- navigation ---------- */
 const views = ['swarm', 'live', 'simulation'];
 const ALIAS = { testnet: 'live', jobs: 'live', agents: 'live', console: 'simulation' }; // older links
-const TRUTH = { live: 'Live: NEAR Testnet, read in your browser', sim: 'Simulation: no chain, no model calls' };
+const TRUTH = { sim: 'Simulation: no chain, no model calls', wait: 'Connecting to NEAR Testnet…', down: 'Cannot reach NEAR Testnet. Retrying.' };
+/** The pill in the header says what the page is really showing: the simulation, or the chain and how fresh the read is. */
+function renderTruth() {
+  const pill = $('truth'); if (!pill) return;
+  let mode = 'sim', text = TRUTH.sim;
+  if (currentView() !== 'simulation') {
+    const chain = live.chain, age = chain ? Math.max(0, Math.round((Date.now() - chain.readAt.getTime()) / 1000)) : 0;
+    if (!chain) { mode = live.error ? 'down' : 'wait'; text = TRUTH[mode]; }
+    else if (live.error) { mode = 'down'; text = `Cannot reach NEAR Testnet. Showing the read from ${chain.readAt.toLocaleTimeString()}.`; }
+    else { mode = 'live'; text = `Live: NEAR Testnet, read ${age < 5 ? 'just now' : age < 90 ? `${age}s ago` : `${Math.round(age / 60)} min ago`}`; }
+  }
+  pill.dataset.mode = mode; pill.querySelector('span').textContent = text;
+}
 const currentView = () => document.querySelector('.view:not([hidden])')?.dataset.view;
 function show(name, focus = false) {
   name = ALIAS[name] ?? name;
@@ -19,8 +31,6 @@ function show(name, focus = false) {
   for (const v of document.querySelectorAll('.view')) v.hidden = v.dataset.view !== name;
   for (const a of document.querySelectorAll('[data-nav]')) a.toggleAttribute('aria-current', false);
   for (const a of document.querySelectorAll(`.top nav [data-nav="${name}"]`)) a.setAttribute('aria-current', 'page');
-  const mode = name === 'simulation' ? 'sim' : 'live';
-  $('truth').dataset.mode = mode; $('truth').querySelector('span').textContent = TRUTH[mode];
   document.title = name === 'swarm' ? 'SwarmGuild' : `${name[0].toUpperCase()}${name.slice(1)} · SwarmGuild`;
   if (focus) scrollTo({ top: 0 });
   render();
@@ -29,12 +39,12 @@ addEventListener('hashchange', () => show(location.hash.slice(1), true));
 
 /* ---------- rendering ---------- */
 const TRACK = [
-  ['Post', 'Poster', 'A job description and a NEAR bounty go into the contract. The bounty is escrowed.'],
-  ['Seal', 'Agents', 'Each agent commits a hash of its price and locks a 0.01 NEAR bond from its own balance.'],
-  ['Reveal', 'Agents', 'Prices come out and must match the hash. A bid that stays hidden loses its bond.'],
-  ['Award', 'Anyone', 'The lowest revealed price wins. A tie goes to whoever committed first.'],
-  ['Work', 'Winner', 'One model call inside NEAR AI\'s TEE, billed to the agent. The signed result goes on chain.'],
-  ['Review', 'Reviewers', 'Guardrails first, then a panel of three reviewers votes until two agree. Two passes pay; two fails refund.'],
+  ['Post', 'Poster', 'A job and its NEAR bounty go into the contract.'],
+  ['Seal', 'Agents', 'Each bid is a hash of a price, backed by a 0.01 NEAR bond.'],
+  ['Reveal', 'Agents', 'Prices must match their hashes. A hidden bid loses its bond.'],
+  ['Award', 'Anyone', 'The lowest price wins. A tie goes to the earlier bid.'],
+  ['Work', 'Winner', 'One model call in NEAR AI\'s TEE. The signed result goes on chain.'],
+  ['Review', 'Reviewers', 'Guardrails, then votes. Two passes pay; two fails refund.'],
 ];
 $('track').innerHTML = TRACK.map(([title, who, text], i) => `<li><span class="n">0${i + 1}</span><span class="live" title="A job on Testnet is at this step right now"></span><h3>${title}</h3><span class="who">${who}</span><p>${text}</p></li>`).join('');
 const votesHtml = job => `<span class="votes" aria-label="${job.reviews.filter(v => v.pass).length} pass, ${job.reviews.filter(v => !v.pass).length} fail">${[0, 1, 2].map(i => `<i data-v="${job.reviews[i] ? (job.reviews[i].pass ? 'pass' : 'fail') : ''}"></i>`).join('')}</span>`;
@@ -50,10 +60,10 @@ function renderMetrics() {
     const cs = live.chain && chainStats(live.chain);
     cells = cs ? [['Jobs on chain', cs.jobs, 1], ['Paid after review', cs.paid, cs.paid / Math.max(1, cs.jobs)], ['Rejected by reviewers', cs.rejected, cs.rejected / Math.max(1, cs.jobs)],
       ['Agents, hosted', `${cs.agents}, ${cs.hosted}`, cs.hosted / Math.max(1, cs.agents)], ['Earned on chain', `${nearYocto(cs.earned)} N`, 1], ['Inference billed', `${nearYocto(cs.inference, 5)} N`, Math.min(1, Number(cs.inference) / Math.max(1, Number(cs.earned)))]]
-      : ['Jobs on chain', 'Paid after review', 'Rejected by reviewers', 'Agents, hosted', 'Earned on chain', 'Inference billed'].map(label => [label, '…', 0]);
+      : ['Jobs on chain', 'Paid after review', 'Rejected by reviewers', 'Agents, hosted', 'Earned on chain', 'Inference billed'].map(label => [label, '', 0]);
   }
   if (!el.children.length) el.innerHTML = cells.map(() => '<div class="metric"><small></small><b></b><span></span></div>').join('');
-  cells.forEach(([label, value, share], i) => { el.children[i].querySelector('small').textContent = label; el.children[i].querySelector('b').textContent = value; el.children[i].querySelector('span').style.width = `${Math.min(100, Math.max(2, share * 100))}%`; });
+  cells.forEach(([label, value, share], i) => { el.children[i].toggleAttribute('data-wait', value === ''); el.children[i].querySelector('small').textContent = label; el.children[i].querySelector('b').textContent = value; el.children[i].querySelector('span').style.width = `${Math.min(100, Math.max(2, share * 100))}%`; });
 }
 
 function renderConsole() {
@@ -74,7 +84,7 @@ function renderConsole() {
     .map(p => `<li><b>${esc(p.name)}</b><span class="num">${near(p.bal)}</span><span class="state" data-s="${p.state}">${p.state}</span><span></span><span class="bar"><i style="width:${Math.min(100, p.bal / max * 100).toFixed(1)}%"></i></span></li>`).join('');
 }
 
-function render() { renderMetrics(); if (currentView() === 'simulation') renderConsole(); }
+function render() { renderTruth(); renderMetrics(); if (currentView() === 'simulation') renderConsole(); }
 
 /* ---------- the simulation's clock ---------- */
 function schedule() { clearInterval(timer); if (!paused) timer = setInterval(() => { sim.step(); if (currentView() === 'simulation') render(); }, [2600, 1900, 1300, 800, 380][speed - 1]); }
@@ -85,7 +95,8 @@ $('ctl-speed').addEventListener('input', e => { speed = Number(e.target.value); 
 
 /* ---------- start ---------- */
 const live = mountLive($);
-live.onChange(() => renderMetrics());
+live.onChange(() => { renderTruth(); renderMetrics(); });
+setInterval(renderTruth, 5000); // the pill counts the seconds since the last read
 drawScrawl($('scrawl'));
 mountHero($('hero-art'), () => sim);
 mountDispatch($('dispatch-art'), () => sim);
