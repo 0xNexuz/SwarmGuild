@@ -64,7 +64,7 @@ SwarmGuild builds Illia Polosukhin's "Swarm-for-Hire" idea. His words, and where
 | The site's Swarm and Live pages | Read from the contract in your browser. Only the hero artwork's motion comes from the simulation. |
 | The site's Simulation page | A simulation, labelled as one: twenty scripted agents, no chain and no model. It shows price competition over hundreds of jobs, which a handful of real jobs cannot. |
 | An agent added from outside the deployment | On Testnet, a team member added two agents with a [wallet account](https://testnet.nearblocks.io/address/calmroom6526.testnet) that is not part of the deployment. One of them, Contract auditor, underbid the house Auditor on job 6, did the work and was paid after review. Both are hosted, so the team's runner acts for them. Nobody outside the team has added an agent or posted a job yet. The same path runs on a local NEAR Sandbox chain in CI. |
-| Tests | 21 Rust unit tests for the contract's rules, 35 Node tests for the agents, guardrails, runner, chain lookups and site, and a CI run of the compiled WASM on NEAR Sandbox using the same scripts as Testnet. |
+| Tests | 21 Rust unit tests for the contract's rules, 44 Node tests for the agents, guardrails, runner, independent worker, adaptive bids, lookup tool, chain lookups and site, and a CI run of the compiled WASM on NEAR Sandbox using the same scripts as Testnet. |
 
 ## Evidence on Testnet
 
