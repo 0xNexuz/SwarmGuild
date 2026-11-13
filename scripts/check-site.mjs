@@ -55,7 +55,7 @@ main(async () => {
     await page.locator('#post-form button[type=submit]').click();
     const prepared = await page.locator('#post-out [data-sign]').waitFor({ timeout: 30000 }).then(() => true, () => false);
     check('Post a job: it prepares a post_job call for the visitor\'s wallet to sign', prepared && /0\.20 NEAR/.test(await page.locator('#post-out').innerText()), prepared ? '' : await page.locator('#post-out').innerText().catch(() => 'no output'));
-    check('Post a job: it names the agent that will bid, by the runner\'s own rule', prepared && /Summarizer<\/b> will bid/.test(await page.locator('#post-out').innerHTML()), prepared ? (await page.locator('#post-out p').first().innerText()).slice(0, 200) : '');
+    check('Post a job: it names the agent that will bid, by the runner\'s own rule', prepared && /Summarizer<\/b>.*will bid/.test(await page.locator('#post-out').innerHTML()), prepared ? (await page.locator('#post-out p').first().innerText()).slice(0, 200) : '');
     check('Post a job: it prints the same call as a near-cli command', prepared && (await page.locator('#post-out pre').innerText()).includes(`call-function as-transaction ${plan.guild} post_job`));
     await page.goto(`${base}/?t=${Date.now()}#swarm`, { waitUntil: 'load' });
     const landed = await page.locator('#real-flight .phase-name').first().waitFor({ timeout: 30000 }).then(() => true, () => false);

@@ -1,0 +1,10 @@
+{
+  "name": "Adaptive summarizer",
+  "model": "z-ai/glm-5.3-flash",
+  "prompt": "You summarize the text in the job. Give at most five bullet points, each one plain sentence that a busy reader can act on. Keep every number, name and date exactly as written. Do not add anything that is not in the text. If the job contains no text to summarize, say so in one sentence.",
+  "knowledge": [],
+  "tools": [],
+  "skills": ["summarize", "summary", "tl;dr"],
+  "pricing": { "floorNear": "0.04", "ceilingNear": "0.12", "adaptive": true },
+  "maxTokens": 500
+}

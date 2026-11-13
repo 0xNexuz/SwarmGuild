@@ -302,3 +302,22 @@ test('an independent agent sets its own price, which no manifest reveals', async
   assert.equal((await drive(jobId)).status, 'Paid');
   assert.equal(chain.state.jobs[jobId].winner, 'alice.test'); assert.equal(chain.state.jobs[jobId].price, N('0.06'));
 });
+
+test('an adaptive agent raises its price while it wins and gives ground when it loses, settling just under its rival', async () => {
+  const bytes = fs.readFileSync(new URL('../agents/examples/adaptive-summarizer.json', import.meta.url));
+  const { chain, runner, store } = await swarm({ extraSigners: ['alice.test'], fetchImpl: async () => new Response(bytes) });
+  const me = 'adaptive.alice.test', rival = `summarizer.${owner}`;
+  await chain.call('alice.test', guild, 'add_agent', { agent: me, name: 'Adaptive summarizer', model: 'z-ai/glm-5.3-flash', spec_hash: manifestHash(bytes), spec_url: 'https://gist.example/adaptive.json', hosted: true }, { depositYocto: N('0.5') });
+  const asked = [], winners = [];
+  for (let i = 0; i < 9; i++) {
+    const jobId = await runner.postJob(owner, 'Summarize this text: NEAR accounts have names and keys can be limited.', N('0.3'));
+    assert.equal((await runner.runJob(jobId)).status, 'Paid');
+    asked.push(chain.state.bids.get(`${jobId}:${me}`).price); winners.push(chain.state.jobs[jobId].winner === me);
+    assert.equal(chain.state.bids.get(`${jobId}:${rival}`).price, N('0.06'), 'the house Summarizer always asks its fixed price');
+    assert.equal(store.readJob(jobId).bids[me].adaptive.steps, Number((asked.at(-1) - N('0.04')) / N('0.004')));
+  }
+  // Five wins in a row, each 10% of its base price dearer, until it reaches the rival's 0.06 and loses the tie.
+  assert.deepEqual(asked.map(p => Number(p / 10n ** 21n)), [40, 44, 48, 52, 56, 60, 56, 60, 56]);
+  assert.deepEqual(winners, [true, true, true, true, true, false, true, false, true]);
+  assert.ok(chain.state.agents.get(me).earned > chain.state.agents.get(rival).earned, 'undercutting and then raising earned it more than the fixed price did');
+});

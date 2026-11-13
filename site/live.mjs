@@ -2,7 +2,7 @@
 // files the on-chain result URLs point to. Posting a job or adding an agent hands a transaction to the
 // visitor's own wallet through NEAR Connect; the site holds no key. Nothing here comes from the simulation.
 import { manifestProblems, MAX_MANIFEST_BYTES } from './manifest-rules.mjs';
-import { decideBid } from './bid-rule.mjs';
+import { auctionHistory, decideBid } from './bid-rule.mjs';
 import { addAgentCall, agentIdFor, cliCommand, isAccountId, nearToYocto, postJobCall, walletTransaction, withdrawCreditCall } from './tx.mjs';
 import nearConnect from './vendor/near-connect.js'; // a CommonJS package, bundled: its exports are on the default export
 const { NearConnector } = nearConnect;
@@ -281,16 +281,18 @@ export function mountLive($) {
     return manifests.get(agent.spec_hash);
   }
   async function bidders(description, bountyNear) {
-    const names = [], skills = new Set();
+    const found = [], skills = new Set(); let independent = 0;
     const workers = chain ? chain.agents.filter(([id]) => !chain.config.reviewers.includes(id)) : [];
-    await Promise.all(workers.map(async ([, agent]) => {
+    await Promise.all(workers.map(async ([id, agent]) => {
       try {
         const manifest = await manifestOf(agent);
         for (const skill of manifest.skills ?? []) skills.add(skill);
-        if (decideBid(manifest, { description, bounty: nearToYocto(bountyNear) }, agent).bid) names.push(agent.name);
-      } catch { /* the runner refuses an agent whose manifest cannot be read or has changed, so it will not bid */ }
+        // An adaptive agent's price depends on how its past auctions went, which is on chain too.
+        const decision = decideBid(manifest, { description, bounty: nearToYocto(bountyNear) }, agent, auctionHistory(chain.jobs, id, chain.jobs.length));
+        if (decision.bid) found.push({ name: agent.name, price: decision.priceYocto });
+      } catch { if (!agent.hosted) independent++; /* an independent agent keeps its manifest and its price to itself; a hosted one that cannot be read is not hosted */ }
     }));
-    return { names: names.sort(), skills: [...skills].sort() };
+    return { found: found.sort((x, y) => (x.price < y.price ? -1 : x.price > y.price ? 1 : x.name.localeCompare(y.name))), skills: [...skills].sort(), independent };
   }
 
   const needAccount = out => { const id = account(); if (isAccountId(id) && id.endsWith('.testnet')) return id; out.hidden = false; out.innerHTML = '<p class="bad">Connect your wallet, or enter your NEAR Testnet account, for example you.testnet.</p>'; return null; };
@@ -300,10 +302,11 @@ export function mountLive($) {
     const description = String(data.get('description')).trim(); const bounty = String(data.get('bounty')).trim();
     if (!description || description.length > 2000 || !(Number(bounty) >= 0.05)) { out.hidden = false; out.innerHTML = '<p class="bad">Describe the job in up to 2,000 characters and offer at least 0.05 NEAR.</p>'; return; }
     out.hidden = false; out.innerHTML = '<p class="muted">Checking which agents will bid…</p>';
-    const { names, skills } = await bidders(description, bounty);
-    const who = names.length
-      ? `${names.map(n => `<b>${esc(n)}</b>`).join(', ').replace(/, (?=[^,]*$)/, ' and ')} will bid. Bids seal for two minutes, then the work and the review take about two more.`
-      : `<span class="bad">No agent on chain bids on this job, so it would be cancelled and the bounty returned to you as credit.</span> Agents bid when the job mentions one of their skills${skills.length ? `: ${esc(skills.join(', '))}` : ''}, and when the bounty covers their floor price.`;
+    const { found, skills, independent } = await bidders(description, bounty);
+    const also = independent ? ` ${independent} independent agent${independent > 1 ? 's' : ''} may bid too, at a price only ${independent > 1 ? 'they know' : 'it knows'}.` : '';
+    const who = found.length
+      ? `${found.map(f => `<b>${esc(f.name)}</b> at ${near(f.price)} NEAR`).join(', ').replace(/, (?=[^,]*$)/, ' and ')} will bid.${also} Bids seal for two minutes, then the work and the review take about two more.`
+      : `<span class="bad">No agent with public rules is set to bid on this job${independent ? '' : ', so it would be cancelled and the bounty returned to you as credit'}.</span>${also} Agents bid when the job mentions one of their skills${skills.length ? `: ${esc(skills.join(', '))}` : ''}, and when the bounty covers their floor price.`;
     const offline = /^(offline|not started)/.test(runner) ? ' <span class="bad">The runner that hosts the agents is offline right now, so nobody will bid until it is back.</span>' : '';
     offer(out, postJobCall(GUILD, id, description, bounty), `This posts your job with <b>${esc(bounty)} NEAR</b> held by the contract. ${who}${offline}`);
   });
